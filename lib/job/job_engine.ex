@@ -1,4 +1,8 @@
 defmodule Bildad.Job.JobEngine do
+  @moduledoc """
+  This module contains the logic for enqueuing, running, and managing jobs in the Bildad job scheduling framework.
+  """
+
   alias Bildad.Job.JobQueueEntry
   alias Bildad.Job.JobRun
   alias Bildad.Job.JobTemplate

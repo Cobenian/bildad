@@ -1,4 +1,8 @@
 defmodule Bildad.Job.JobConfig do
+  @moduledoc """
+  Configuration for the Bildad job scheduling framework.
+  """
+
   @enforce_keys [:repo]
   defstruct [
     :repo,

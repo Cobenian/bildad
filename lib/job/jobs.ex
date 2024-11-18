@@ -1,4 +1,7 @@
 defmodule Bildad.Job.Jobs do
+  @moduledoc """
+  The Jobs module is responsible for managing job templates, job queue entries, and job runs.
+  """
   import Ecto.Query
 
   alias Bildad.Job.JobTemplate

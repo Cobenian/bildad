@@ -1,4 +1,7 @@
 defmodule Bildad.Job.JobKiller do
+  @moduledoc """
+  The JobKiller module is responsible for killing jobs that have run too long.
+  """
   use Task, restart: :permanent
 
   require Logger
