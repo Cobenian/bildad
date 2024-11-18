@@ -6,7 +6,7 @@ defmodule Mix.Tasks.Bildad.Install do
     application_name =
       OptionParser.parse(args, strict: [application_name: :string])[:application_name]
 
-    controller_template_content = File.read!("./jobs_controller.ex.eex")
+    controller_template_content = File.read!("./templates/jobs_controller.ex.eex")
 
     controller_file_content =
       EEx.eval_string(controller_template_content,
@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Bildad.Install do
       controller_file_content
     )
 
-    migration_template_content = File.read!("./jobs_migration.ex.eex")
+    migration_template_content = File.read!("./templates/jobs_migration.ex.eex")
     now = DateTime.utc_now()
     zero_padded_month = zero_pad(now.month)
     zero_padded_day = zero_pad(now.day)
