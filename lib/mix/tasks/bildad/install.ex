@@ -3,8 +3,8 @@ defmodule Mix.Tasks.Bildad.Install do
 
   @shortdoc "Install controllers, migration and prints information about updating the router and application.ex file"
   def run(args) do
-    application_name =
-      OptionParser.parse(args, strict: [application_name: :string])[:application_name]
+    {[application_name: application_name], _, _} =
+      OptionParser.parse(args, strict: [application_name: :string])
 
     controller_template_content = File.read!("./templates/jobs_controller.ex.eex")
 
