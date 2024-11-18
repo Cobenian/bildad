@@ -7,7 +7,11 @@ defmodule Bildad.MixProject do
       version: "0.1.0",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      description: description(),
+      package: package(),
+      name: "Bildad",
+      source_url: "https://github.com/Cobenian/bildad"
     ]
   end
 
@@ -26,6 +30,21 @@ defmodule Bildad.MixProject do
       {:ecto_sql, "~> 3.6"}
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+    ]
+  end
+
+  defp description() do
+    """
+    Bildad is a job scheduling framework for Phoenix applications (works with LiveView). It is designed to be simple to use and easy to integrate into your existing Elixir applications.
+    """
+  end
+
+  defp package() do
+    [
+      files: ~w(lib priv .formatter.exs mix.exs README* readme* LICENSE*
+                license* CHANGELOG* changelog* src),
+      licenses: ["Apache-2.0"],
+      links: %{"GitHub" => "https://github.com/Cobenian/bildad"}
     ]
   end
 end
