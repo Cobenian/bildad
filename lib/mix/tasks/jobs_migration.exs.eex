@@ -1,0 +1,82 @@
+defmodule Bildad.Repo.Migrations.AddJobsFramework do
+  use Ecto.Migration
+
+  def down do
+    execute "ALTER TABLE job_runs DROP CONSTRAINT job_runs_job_queue_entry_id_fkey"
+
+    execute "ALTER TABLE job_queue_entries DROP CONSTRAINT job_queue_entries_current_job_run_id_fkey"
+
+    drop table("job_runs")
+    drop table("job_queue_entries")
+    drop table("job_templates")
+  end
+
+  def up do
+    create table("job_templates") do
+      add :name, :string, null: false
+      add :code, :string, null: false
+      add :active, :boolean, null: false, default: true
+      add :display_order, :integer
+      add :job_module_name, :string, null: false
+      add :default_timeout_in_minutes, :integer, null: false, default: 60
+      add :default_max_retries, :integer, null: false, default: 3
+      add :job_context_schema, :map, null: false
+
+      timestamps()
+    end
+
+    create unique_index("job_templates", [:code])
+
+    create table("job_queue_entries") do
+      add :job_template_id, references("job_templates", on_delete: :delete_all)
+      add :job_run_identifier, :string, null: false
+      # possible values: AVAILABLE, RUNNING
+      add :status, :string, null: false, default: "AVAILABLE"
+      add :priority, :integer, null: false, default: 5
+      add :timeout_in_minutes, :integer, null: false, default: 60
+      add :max_retries, :integer, null: false
+      add :job_context, :map, null: false
+
+      timestamps()
+    end
+
+    create unique_index("job_queue_entries", [:job_run_identifier])
+    create index("job_queue_entries", [:job_template_id])
+
+    create table("job_runs") do
+      add :job_run_identifier, :string, null: false
+      add :job_queue_entry_id, references("job_queue_entries", on_delete: :nilify_all)
+      add :job_template_id, references("job_templates", on_delete: :delete_all)
+      add :retry, :integer, null: false
+      add :job_process_name, :string, null: false
+
+      add :started_at, :naive_datetime, null: false
+      add :timeout_at, :naive_datetime, null: false
+      add :expires_at, :naive_datetime, null: false
+      add :ended_at, :naive_datetime
+
+      # possible values: RUNNING, DONE
+      add :status, :string, null: false, default: "RUNNING"
+      # possible values: SUCCEEDED, FAILED
+      add :result, :string
+      # possible values: TIMEOUT, ERROR
+      add :reason, :string
+
+      add :job_context, :map, null: false
+
+      timestamps()
+    end
+
+    create unique_index("job_runs", [:job_process_name])
+    create unique_index("job_runs", [:job_run_identifier, :retry])
+    create index("job_runs", [:job_run_identifier])
+    create index("job_runs", [:job_template_id])
+    create index("job_runs", [:job_queue_entry_id])
+
+    alter table("job_queue_entries") do
+      add :current_job_run_id, references("job_runs", on_delete: :delete_all)
+    end
+
+    create index("job_queue_entries", [:current_job_run_id])
+  end
+end

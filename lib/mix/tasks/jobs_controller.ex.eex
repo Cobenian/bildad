@@ -1,0 +1,92 @@
+defmodule <%= application_name %>Web.Jobs.JobsController do
+  use <%= application_name %>Web, :controller
+
+  alias Bildad.Job.Jobs
+  alias Bildad.Job.JobConfig
+  alias Bildad.Job.JobEngine
+
+  require Logger
+
+  def get_repo() do
+    <%= application_name %>.Repo
+  end
+
+  def run_job_engine(conn, _params) do
+    expire_resp_data =
+      get_repo()
+      |> JobConfig.new()
+      |> do_expire_jobs()
+      |> get_counts()
+
+    start_resp_data =
+      get_repo()
+      |> JobConfig.new()
+      |> do_start_jobs()
+      |> get_counts()
+
+    engine_resp_data =
+      %{
+        start: start_resp_data,
+        # timeout: timeout_resp_data,
+        expire: expire_resp_data
+      }
+
+    put_json(conn, engine_resp_data)
+  end
+
+  defp put_json(conn, resp_data) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(resp_data))
+  end
+
+  defp get_counts(jobs) do
+    ok_count =
+      Enum.count(jobs, fn
+        {:ok, _} -> true
+        _ -> false
+      end)
+
+    error_count =
+      Enum.count(jobs, fn
+        {:error, _} -> true
+        _ -> false
+      end)
+
+    %{ok_count: ok_count, error_count: error_count}
+  end
+
+  defp do_start_jobs(job_config) do
+    job_config
+    |> Jobs.list_jobs_to_run_in_the_queue()
+    |> Enum.map(fn job_in_the_queue ->
+      try do
+        JobEngine.run_a_job(job_config, job_in_the_queue)
+      rescue
+        e ->
+          Logger.warning(
+            "Error running job in the queue: #{inspect(job_in_the_queue.id)} with error: #{inspect(e)}"
+          )
+
+          {:error, e}
+      end
+    end)
+  end
+
+  defp do_expire_jobs(job_config) do
+    job_config
+    |> Jobs.list_expired_jobs()
+    |> Enum.map(fn job_run ->
+      try do
+        JobEngine.expire_a_job(job_config, job_run)
+      rescue
+        e ->
+          Logger.warning(
+            "Error expiring job run: #{inspect(job_run.id)} with error: #{inspect(e)}"
+          )
+
+          {:error, e}
+      end
+    end)
+  end
+end
