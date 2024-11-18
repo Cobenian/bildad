@@ -3,18 +3,37 @@ defmodule Mix.Tasks.Bildad.Install do
 
   @shortdoc "Install controllers, migration and prints information about updating the router and application.ex file"
   def run(args) do
-    {[application_name: application_name], _, _} =
-      OptionParser.parse(args, strict: [application_name: :string])
+    IO.puts("Installing Bildad Jobs Framework...#{inspect(args)}")
+    OptionParser.parse(args, strict: [application: :string])
+    |> case do
+      {[application: application], _, _} ->
+        do_install(application)
 
+      _bad_args ->
+        IO.puts(usage())
+    end
+  end
+
+  def usage() do
+    """
+    You must provide the name of the application you want to install the Bildad Jobs Framework into.
+
+    For example:
+
+    mix bildad.install --application my_app
+    """
+  end
+
+  def do_install(application) do
     controller_template_content = File.read!("./templates/jobs_controller.ex.eex")
 
     controller_file_content =
       EEx.eval_string(controller_template_content,
-        application_name: Macro.camelize(application_name)
+        application_name: Macro.camelize(application)
       )
 
     File.write!(
-      "./lib/#{Macro.underscore(application_name)}_web/controllers/jobs_controller.ex",
+      "./lib/#{Macro.underscore(application)}_web/controllers/jobs_controller.ex",
       controller_file_content
     )
 
