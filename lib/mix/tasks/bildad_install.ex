@@ -1,4 +1,4 @@
-defmodule Mix.Tasks.BildadInstall do
+defmodule Mix.Tasks.Bildad.Install do
   use Mix.Task
 
   @shortdoc "Install controllers, migration and prints information about updating the router and application.ex file"
