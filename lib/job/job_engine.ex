@@ -141,8 +141,8 @@ defmodule Bildad.Job.JobEngine do
       ) do
     enqueue_job(job_config, job_template, job_context, opts)
     |> case do
-      {:ok, _job_queue_entry} ->
-        run_job_engine(job_config)
+      {:ok, job_queue_entry} ->
+        {:ok, %{job_queue_entry: job_queue_entry, job_engine_results: run_job_engine(job_config)}}
 
       {:error, e} ->
         {:error, e}
