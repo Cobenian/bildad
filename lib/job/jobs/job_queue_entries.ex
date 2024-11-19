@@ -16,6 +16,7 @@ defmodule Bildad.Job.JobQueueEntries do
       where: e.job_run_identifier == ^job_run_identifier
     )
     |> job_config.repo.one()
+    |> preload_job_queue_entries(job_config)
   end
 
   @doc """
@@ -55,6 +56,7 @@ defmodule Bildad.Job.JobQueueEntries do
     )
     |> order_job_queue_entries()
     |> job_config.repo.all()
+    |> preload_job_queue_entries(job_config)
   end
 
   @doc """
@@ -71,6 +73,7 @@ defmodule Bildad.Job.JobQueueEntries do
     |> paginate_job_queue_entries(page, limit)
     |> order_job_queue_entries()
     |> job_config.repo.all()
+    |> preload_job_queue_entries(job_config)
   end
 
   @doc """
@@ -80,6 +83,7 @@ defmodule Bildad.Job.JobQueueEntries do
     from(e in JobQueueEntry)
     |> order_job_queue_entries()
     |> job_config.repo.all()
+    |> preload_job_queue_entries(job_config)
   end
 
   @doc """
@@ -90,6 +94,7 @@ defmodule Bildad.Job.JobQueueEntries do
     |> paginate_job_queue_entries(page, limit)
     |> order_job_queue_entries()
     |> job_config.repo.all()
+    |> preload_job_queue_entries(job_config)
   end
 
   @doc """
@@ -98,6 +103,7 @@ defmodule Bildad.Job.JobQueueEntries do
   def get_number_of_jobs_in_the_queue(%JobConfig{} = job_config) do
     from(e in JobQueueEntry, select: count(e.id))
     |> job_config.repo.one()
+    |> preload_job_queue_entries(job_config)
   end
 
   @doc """
@@ -134,5 +140,9 @@ defmodule Bildad.Job.JobQueueEntries do
   defp order_job_queue_entries(query) do
     query
     |> order_by([e], asc: e.priority, asc: e.inserted_at)
+  end
+
+  def preload_job_queue_entries(entries, %JobConfig{} = job_config) do
+    job_config.repo.preload(entries, :job_template)
   end
 end

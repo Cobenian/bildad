@@ -17,6 +17,7 @@ defmodule Bildad.Job.JobRuns do
     )
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -29,6 +30,7 @@ defmodule Bildad.Job.JobRuns do
     )
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -46,6 +48,7 @@ defmodule Bildad.Job.JobRuns do
     |> paginate_job_runs(page, limit)
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -58,6 +61,7 @@ defmodule Bildad.Job.JobRuns do
     )
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -75,6 +79,7 @@ defmodule Bildad.Job.JobRuns do
     |> paginate_job_runs(page, limit)
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -87,6 +92,7 @@ defmodule Bildad.Job.JobRuns do
     )
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -104,6 +110,7 @@ defmodule Bildad.Job.JobRuns do
     |> paginate_job_runs(page, limit)
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -114,6 +121,7 @@ defmodule Bildad.Job.JobRuns do
     |> paginate_job_runs(page, limit)
     |> order_job_runs()
     |> job_config.repo.all()
+    |> preload_job_runs(job_config)
   end
 
   @doc """
@@ -135,5 +143,9 @@ defmodule Bildad.Job.JobRuns do
   defp order_job_runs(query) do
     query
     |> order_by([r], desc: r.inserted_at)
+  end
+
+  def preload_job_runs(job_runs, %JobConfig{} = job_config) do
+    job_config.repo.preload(job_runs, :job_template)
   end
 end
