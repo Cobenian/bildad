@@ -16,6 +16,11 @@ defmodule Bildad.Job.JobConfig do
     job_run_result_failed: "FAILED"
   ]
 
+  @doc """
+  Creates a new JobConfig struct for the provided database repository.
+
+  Prefer this function over directly creating the struct as the struct internals may change over time.
+  """
   def new(repo, default_page_size \\ 25) do
     %__MODULE__{repo: repo, default_page_size: default_page_size}
   end

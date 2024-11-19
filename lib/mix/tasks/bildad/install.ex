@@ -1,9 +1,10 @@
 defmodule Mix.Tasks.Bildad.Install do
   use Mix.Task
 
-  @shortdoc "Install controllers, migration and prints information about updating the router and application.ex file"
+  @shortdoc "Install migration and controller for Bildad Jobs Framework"
   def run(args) do
     IO.puts("Installing Bildad Jobs Framework...#{inspect(args)}")
+
     OptionParser.parse(args, strict: [application: :string])
     |> case do
       {[application: application], _, _} ->
@@ -25,7 +26,7 @@ defmodule Mix.Tasks.Bildad.Install do
   end
 
   def do_install(application) do
-    controller_template_content = File.read!("./templates/jobs_controller.ex.eex")
+    controller_template_content = File.read!(get_template_file_path("jobs_controller.ex.eex"))
 
     controller_file_content =
       EEx.eval_string(controller_template_content,
@@ -37,7 +38,7 @@ defmodule Mix.Tasks.Bildad.Install do
       controller_file_content
     )
 
-    migration_template_content = File.read!("./templates/jobs_migration.ex.eex")
+    migration_template_content = File.read!(get_template_file_path("jobs_migration.ex.eex"))
     now = DateTime.utc_now()
     zero_padded_month = zero_pad(now.month)
     zero_padded_day = zero_pad(now.day)
@@ -76,6 +77,10 @@ defmodule Mix.Tasks.Bildad.Install do
     """)
 
     IO.puts("")
+  end
+
+  def get_template_file_path(filename) do
+    Application.app_dir(:bildad, ["templates", filename])
   end
 
   def zero_pad(nbr) do

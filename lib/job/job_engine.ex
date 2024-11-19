@@ -1,7 +1,9 @@
 defmodule Bildad.Job.JobEngine do
   @moduledoc """
-  This module contains the logic for enqueuing, running, and managing jobs in the Bildad job scheduling framework.
+  This module contains the logic for enqueuing, running, killing and expiring jobs in the Bildad job scheduling framework.
   """
+
+  alias Bildad.Job.Jobs
 
   alias Bildad.Job.JobQueueEntry
   alias Bildad.Job.JobRun
@@ -13,8 +15,93 @@ defmodule Bildad.Job.JobEngine do
 
   require Logger
 
+  # run the engine
+
+  @doc """
+  This function is called by the job scheduler to run the job engine.
+
+  This should be called by a single cron job in your environment so that the engine is run on one node at a time.
+  """
+  def run_job_engine(job_config) do
+    expire_resp_data =
+      job_config.repo
+      |> JobConfig.new()
+      |> do_expire_jobs()
+
+    start_resp_data =
+      job_config.repo
+      |> JobConfig.new()
+      |> do_start_jobs()
+
+    %{
+      start: start_resp_data,
+      expire: expire_resp_data
+    }
+  end
+
+  @doc """
+  Utility function go get the number of successful jobs and the number of jobs that failed.
+  """
+  def get_counts(jobs) do
+    ok_count =
+      Enum.count(jobs, fn
+        {:ok, _} -> true
+        _ -> false
+      end)
+
+    error_count =
+      Enum.count(jobs, fn
+        {:error, _} -> true
+        _ -> false
+      end)
+
+    %{ok_count: ok_count, error_count: error_count}
+  end
+
+  # Internal function that gets jobs in the queue that are available to run (not already running) and runs them
+  defp do_start_jobs(job_config) do
+    job_config
+    |> Jobs.list_jobs_to_run_in_the_queue()
+    |> Enum.map(fn job_in_the_queue ->
+      try do
+        run_a_job(job_config, job_in_the_queue)
+      rescue
+        e ->
+          Logger.warning(
+            "Error running job in the queue: #{inspect(job_in_the_queue.id)} with error: #{inspect(e)}"
+          )
+
+          {:error, e}
+      end
+    end)
+  end
+
+  # Internal function for expiring jobs that can't be killed because they are no longer running on any node.
+  defp do_expire_jobs(job_config) do
+    job_config
+    |> Jobs.list_expired_jobs()
+    |> Enum.map(fn job_run ->
+      try do
+        expire_a_job(job_config, job_run)
+      rescue
+        e ->
+          Logger.warning(
+            "Error expiring job run: #{inspect(job_run.id)} with error: #{inspect(e)}"
+          )
+
+          {:error, e}
+      end
+    end)
+  end
+
   # enqueue a job
 
+  @doc """
+  Adds a job to the queue. The order it will be run in will be based on priority and resource availability.
+
+  Each message contains a `job_context` which is a map of data that will be passed to the job module when it is run.
+  This job context must conform to the schema defined in the job template.
+  """
   def enqueue_job(
         %JobConfig{} = job_config,
         %JobTemplate{} = job_template,
@@ -37,8 +124,57 @@ defmodule Bildad.Job.JobEngine do
     |> job_config.repo.insert()
   end
 
+  @doc """
+  Enqueues a job and triggers the job engine to run immediately.
+
+  If there are other jobs ahead of this one in the queue that are higher priority, they will be run first.
+
+  This is the preferred over `enqueue_and_run_job` as it respects the priority of other jobs in the queue.
+
+  TODO: This should make the same API call that the cron job makes and it should check to see if the job engine is already running before starting it.
+  """
+  def enqueue_job_and_trigger_engine(
+        %JobConfig{} = job_config,
+        %JobTemplate{} = job_template,
+        job_context,
+        opts \\ %{}
+      ) do
+    enqueue_job(job_config, job_template, job_context, opts)
+    |> case do
+      {:ok, _job_queue_entry} ->
+        run_job_engine(job_config)
+
+      {:error, e} ->
+        {:error, e}
+    end
+  end
+
+  @doc """
+  Enqueues a job and runs it immediately. 
+
+  This should be used sparingly as it bypasses the priority of other jobs in the queue.
+  """
+  def enqueue_and_run_job(
+        %JobConfig{} = job_config,
+        %JobTemplate{} = job_template,
+        job_context,
+        opts \\ %{}
+      ) do
+    enqueue_job(job_config, job_template, job_context, opts)
+    |> case do
+      {:ok, job_queue_entry} ->
+        run_a_job(job_config, job_queue_entry)
+
+      {:error, e} ->
+        {:error, e}
+    end
+  end
+
   # run a job
 
+  @doc """
+  This function is called by the job scheduler to run a job.
+  """
   def run_a_job(%JobConfig{} = job_config, %JobQueueEntry{} = job_queue_entry) do
     job_config.repo.transaction(fn ->
       job_template = job_config.repo.get(JobTemplate, job_queue_entry.job_template_id)
@@ -121,6 +257,9 @@ defmodule Bildad.Job.JobEngine do
   end
 
   # remove a job from the queue
+  @doc """
+  Removes a job from the queue. This is typically called when a job is completed or when a user wishes to no longer run the job.
+  """
   def remove_job_from_queue(%JobConfig{} = job_config, %JobQueueEntry{} = job_queue_entry) do
     job_config.repo.transaction(fn ->
       job_queue_entry
@@ -128,8 +267,11 @@ defmodule Bildad.Job.JobEngine do
     end)
   end
 
-  # TODO This is incorrect, it needs to make an api call so that all nodes can be notified to TRY to stop the job
-  # since we don't know which one it is running on
+  @doc """
+  This function is called by the job scheduler to stop a job that is currently running.
+  This ONLY updates the record in the database, it does NOT stop the elixir process.
+  To stop the Elixir process if it is still running then `kill_a_job` should be called.
+  """
   def stop_job_in_queue(%JobConfig{} = job_config, %JobQueueEntry{} = job_queue_entry) do
     job_config.repo.transaction(fn ->
       running_status = job_config.job_run_status_running
@@ -161,6 +303,14 @@ defmodule Bildad.Job.JobEngine do
   end
 
   # kill a job
+  @doc """
+  If the Elixir process is running on this node then it kills the process and updates the database record.
+
+  If not, nothing happens on this node. The other nodes should being runnig this function as well and the
+  process will be stopped on one of them.
+  If the process is not running on any node the job will eventually expire when the expiration time is reached.
+  The `expire_a_job` function should be called to handle that case. (This is done by the job engine.)
+  """
   def kill_a_job(%JobConfig{} = job_config, %JobRun{} = job_run) do
     case find_elixir_process(job_run) do
       nil ->
@@ -208,7 +358,9 @@ defmodule Bildad.Job.JobEngine do
   end
 
   # expire a job
-
+  @doc """
+  Used when a job is not running on any node and the expiration time has been reached.
+  """
   def expire_a_job(%JobConfig{} = job_config, %JobRun{} = job_run) do
     job_config.repo.transaction(fn ->
       job_run =
@@ -246,6 +398,9 @@ defmodule Bildad.Job.JobEngine do
 
   # fail a job
 
+  @doc """
+  Jobs that come to completion and are not successful are marked as failed.
+  """
   def fail_a_job(%JobConfig{} = job_config, %JobRun{} = job_run, error_message) do
     job_config.repo.transaction(fn ->
       error_message_str = String.slice("#{inspect(error_message)}", 0, 256)
@@ -284,7 +439,9 @@ defmodule Bildad.Job.JobEngine do
   end
 
   # finish a job
-
+  @doc """
+  Used to mark a job as completed successfully.
+  """
   def complete_a_job(%JobConfig{} = job_config, %JobRun{} = job_run) do
     job_config.repo.transaction(fn ->
       job_run =
@@ -309,6 +466,11 @@ defmodule Bildad.Job.JobEngine do
     end)
   end
 
+  @doc """
+  The queue entry points to the current run which has its retry count.
+  This function increments that number by one OR it returns 0 if there is not a currently running job (which is
+  the initial state of an enqueued job).
+  """
   def get_retry_count(%JobConfig{} = job_config, %JobQueueEntry{} = job_queue_entry) do
     case job_queue_entry.current_job_run_id do
       nil ->
@@ -319,6 +481,9 @@ defmodule Bildad.Job.JobEngine do
     end
   end
 
+  @doc """
+  Each job has a schema that defines the shape of the data that will be passed to the job module when it is run.
+  """
   def validate_job_context(job_context_schema, job_context) do
     Schema.resolve(job_context_schema)
     |> case do
@@ -330,6 +495,10 @@ defmodule Bildad.Job.JobEngine do
     end
   end
 
+  @doc """
+  Launches the Elixir process for the job passing it the job context.
+  It registers the process with the job identifier so that it can be found later.
+  """
   def launch_job_process(%JobConfig{} = job_config, %JobRun{} = job_run) do
     Logger.info("time to launch a job process for #{job_run.job_run_identifier}")
 
@@ -383,6 +552,10 @@ defmodule Bildad.Job.JobEngine do
     end
   end
 
+  @doc """
+  Locates the Elixir process by the job identifier.
+  If the process is not running or is running on another node then nil is returned.
+  """
   def find_elixir_process(%JobRun{} = job_run) do
     # find the process by name
     process_name = job_run.job_process_name
@@ -394,6 +567,9 @@ defmodule Bildad.Job.JobEngine do
     end
   end
 
+  @doc """
+  Tries to kill the process by sending an exit signal.
+  """
   def try_to_kill_process(process_pid) do
     # try to kill the process
     Process.exit(process_pid, :kill)

@@ -4,14 +4,18 @@ defmodule Bildad.MixProject do
   def project do
     [
       app: :bildad,
-      version: "0.1.4",
+      version: "0.1.5",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: description(),
       package: package(),
       name: "Bildad",
-      source_url: "https://github.com/Cobenian/bildad"
+      source_url: "https://github.com/Cobenian/bildad",
+      docs: [
+        main: "Bildad",
+        extras: ["README.md"]
+      ]
     ]
   end
 
@@ -42,7 +46,7 @@ defmodule Bildad.MixProject do
 
   defp package() do
     [
-      files: ~w(lib .formatter.exs mix.exs README* LICENSE* CHANGELOG*),
+      files: ~w(lib priv .formatter.exs mix.exs README* LICENSE* CHANGELOG*),
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/Cobenian/bildad"}
     ]
