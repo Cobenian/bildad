@@ -108,12 +108,12 @@ defmodule Bildad.Job.JobEngine do
         job_context,
         opts \\ %{}
       ) do
-    job_run_identifier = Ecto.UUID.generate()
+    job_run_identifier = Map.get(opts, :job_run_identifier, Ecto.UUID.generate())
 
     %JobQueueEntry{}
     |> JobQueueEntry.changeset(%{
       job_template_id: job_template.id,
-      job_run_identifier: Map.get(opts, :job_run_identifier, job_run_identifier),
+      job_run_identifier: job_run_identifier,
       status: Map.get(opts, :status),
       priority: Map.get(opts, :priority),
       timeout_in_minutes:
