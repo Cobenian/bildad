@@ -38,7 +38,7 @@ defmodule Mix.Tasks.Bildad.Install do
       controller_file_content
     )
 
-    migration_template_content = File.read!(get_template_file_path("jobs_migration.ex.eex"))
+    migration_template_content = File.read!(get_template_file_path("jobs_migration.exs.eex"))
     now = DateTime.utc_now()
     zero_padded_month = zero_pad(now.month)
     zero_padded_day = zero_pad(now.day)
@@ -73,7 +73,7 @@ defmodule Mix.Tasks.Bildad.Install do
     IO.puts("")
 
     IO.puts("""
-    #{IO.ANSI.blue()}{Bildad.Job.JobKiller, check_time_in_seconds: 20},#{IO.ANSI.reset()}
+    #{IO.ANSI.blue()}{Bildad.Job.JobKiller, repo: #{Macro.camelize(application)}.Repo, check_time_in_seconds: 20},#{IO.ANSI.reset()}
     """)
 
     IO.puts("")

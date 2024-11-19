@@ -51,7 +51,7 @@ post "/jobs/engine/run", Jobs.JobsController, :run_job_engine
 Follow the instructions for modifying the `application.ex` file.
 
 ```elixir
-{Bildad.Job.JobKiller, check_time_in_seconds: 20},
+{Bildad.Job.JobKiller, repo: MyApp.Repo, check_time_in_seconds: 20},
 ```
 
 > [!NOTE]
