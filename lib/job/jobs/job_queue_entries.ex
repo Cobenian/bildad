@@ -110,10 +110,12 @@ defmodule Bildad.Job.JobQueueEntries do
 
       job_queue_entry ->
         priority = job_queue_entry.priority
+        inserted_at = job_queue_entry.inserted_at
 
         from(e in JobQueueEntry,
           # where: e.job_run_identifier != ^job_run_identifier,
-          where: e.priority <= ^priority,
+          where:
+            e.priority < ^priority or (e.priority == ^priority and e.inserted_at <= ^inserted_at),
           # + 1
           select: count(e.id)
         )

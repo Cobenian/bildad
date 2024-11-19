@@ -116,6 +116,14 @@ defmodule Bildad.Job.JobRuns do
     |> job_config.repo.all()
   end
 
+  @doc """
+  Returns the number of job runs. (This is useful for pagination.)
+  """
+  def get_number_of_job_runs(job_config) do
+    from(r in JobRun, select: count(r.id))
+    |> job_config.repo.one()
+  end
+
   defp paginate_job_runs(query, page, limit) do
     offset = limit * page
 
