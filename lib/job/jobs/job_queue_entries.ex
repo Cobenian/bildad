@@ -112,8 +112,9 @@ defmodule Bildad.Job.JobQueueEntries do
         priority = job_queue_entry.priority
 
         from(e in JobQueueEntry,
-          where: e.job_run_identifier != ^job_run_identifier,
+          # where: e.job_run_identifier != ^job_run_identifier,
           where: e.priority <= ^priority,
+          # + 1
           select: count(e.id)
         )
         |> job_config.repo.one()
