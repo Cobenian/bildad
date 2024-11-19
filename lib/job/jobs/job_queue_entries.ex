@@ -103,7 +103,6 @@ defmodule Bildad.Job.JobQueueEntries do
   def get_number_of_jobs_in_the_queue(%JobConfig{} = job_config) do
     from(e in JobQueueEntry, select: count(e.id))
     |> job_config.repo.one()
-    |> preload_job_queue_entries(job_config)
   end
 
   @doc """
