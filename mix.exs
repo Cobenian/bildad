@@ -13,7 +13,9 @@ defmodule Bildad.MixProject do
       name: "Bildad",
       source_url: "https://github.com/Cobenian/bildad",
       docs: [
-        extras: ["README.md"]
+        main: "Bildad",
+        extras: ["README.md"],
+        authors: ["Bryan Weber", "Bryan Tylor"]
       ]
     ]
   end
