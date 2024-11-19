@@ -80,7 +80,7 @@ defmodule Mix.Tasks.Bildad.Install do
   end
 
   def get_template_file_path(filename) do
-    Application.app_dir(:bildad, ["templates", filename])
+    Application.app_dir(:bildad, ["priv", "templates", filename])
   end
 
   def zero_pad(nbr) do
