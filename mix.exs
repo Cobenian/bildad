@@ -13,7 +13,6 @@ defmodule Bildad.MixProject do
       name: "Bildad",
       source_url: "https://github.com/Cobenian/bildad",
       docs: [
-        main: "Bildad",
         extras: ["README.md"]
       ]
     ]
