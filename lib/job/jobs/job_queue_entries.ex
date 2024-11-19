@@ -92,6 +92,34 @@ defmodule Bildad.Job.JobQueueEntries do
     |> job_config.repo.all()
   end
 
+  @doc """
+  Gets the number of jobs currently in the queue.
+  """
+  def get_number_of_jobs_in_the_queue(%JobConfig{} = job_config) do
+    from(e in JobQueueEntry, select: count(e.id))
+    |> job_config.repo.one()
+  end
+
+  @doc """
+  Gets the queue position for the provided job run identifier. Returns nil if not found.
+  """
+  def get_queue_position_for_job_run_identifier(%JobConfig{} = job_config, job_run_identifier) do
+    case get_job_queue_entry_for_identifier(job_config, job_run_identifier) do
+      nil ->
+        nil
+
+      job_queue_entry ->
+        priority = job_queue_entry.priority
+
+        from(e in JobQueueEntry,
+          where: e.job_run_identifier != ^job_run_identifier,
+          where: e.priority <= ^priority,
+          select: count(e.id)
+        )
+        |> job_config.repo.one()
+    end
+  end
+
   defp paginate_job_queue_entries(query, page, limit) do
     offset = limit * page
 

@@ -42,4 +42,9 @@ defmodule Bildad.Job.Jobs do
 
   defdelegate list_all_jobs_in_the_queue(job_config), to: JobQueueEntries
   defdelegate list_all_jobs_in_the_queue(job_config, page, limit \\ nil), to: JobQueueEntries
+
+  defdelegate get_number_of_jobs_in_the_queue(job_config), to: JobQueueEntries
+
+  defdelegate get_queue_position_for_job_run_identifier(job_config, job_run_identifier),
+    to: JobQueueEntries
 end
