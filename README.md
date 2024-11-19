@@ -10,12 +10,12 @@ A controller listens for requests to run the engine so that jobs will be started
 
 Jobs that time out will eventually be killed. Jobs that die but are not killed will be expired.
 
-A message with a configurable number of retires is put in the job queue to run a job. When the job is completed, killed or expired it is removed from the queue table. Entries in the queue can have the following status:
+A message with a configurable number of retries is put in the job queue to run a job. When the job is completed, killed or expired it is removed from the queue table. Entries in the queue can have the following status:
 
 * AVAILABLE
 * RUNNING
 
-After the maximum number of retires messages are removed from the jobs queue.
+After the maximum number of retries messages are removed from the jobs queue.
 
 Each run of a job in the message queue is stored in the `job runs` table. It contains the retry number and information about how long the job took along with the following:
 
@@ -36,10 +36,11 @@ def deps do
 end
 ```
 
-Run the mix task to install the necessary migration and controller.
+Run the mix task to install the necessary migration and controller. 
+Be sure to replace `my_app_name` with the name of your application.
 
 ```bash
-mix bildad.install
+mix bildad.install --application my_app_name
 ```
 
 Follow the instructions for modifying the `router.ex` file.
@@ -49,12 +50,13 @@ post "/jobs/engine/run", Jobs.JobsController, :run_job_engine
 ```
 
 Follow the instructions for modifying the `application.ex` file.
+Be sure to replace `MyApp.Repo` with the module of your repository.
 
 ```elixir
 {Bildad.Job.JobKiller, repo: MyApp.Repo, check_time_in_seconds: 20},
 ```
 
-> [!NOTE]
+> **NOTE**
 > You must call the run_job_engine periodically (via cron for example).
 
 You must also create Job Templates for the jobs that you plan on running. They must 
@@ -71,9 +73,10 @@ so that the job context can be validated before a job is run.
   * this expires old jobs that have all timed out and cannot be killed on any node
   * this runs new jobs in the queue that are available to run
 * a job killer task that is run on each node
+* job templates that know the name of the custom job Elixir module and the json schema used to validate the job context
 * custom jobs that have a `run_job` function that takes the job context
 * job templates that know the module name and have the schema for the job context
 
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
+and published on [HexDocs](https://hexdocs.pm). The docs can
 be found at <https://hexdocs.pm/bildad>.

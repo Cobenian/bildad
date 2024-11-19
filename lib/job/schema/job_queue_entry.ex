@@ -1,4 +1,8 @@
 defmodule Bildad.Job.JobQueueEntry do
+  @moduledoc """
+  Database table for the job queue entries.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 

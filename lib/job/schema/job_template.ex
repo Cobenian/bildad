@@ -1,4 +1,10 @@
 defmodule Bildad.Job.JobTemplate do
+  @moduledoc """
+  Database table for job templates. 
+
+  Job templates are the jobs that are available to be run by putting then in the queue.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 

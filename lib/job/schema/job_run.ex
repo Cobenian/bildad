@@ -1,4 +1,8 @@
 defmodule Bildad.Job.JobRun do
+  @moduledoc """
+  Database table for job runs. This includes active and completed job runs.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 

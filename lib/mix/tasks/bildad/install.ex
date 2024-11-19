@@ -1,7 +1,25 @@
 defmodule Mix.Tasks.Bildad.Install do
   use Mix.Task
 
-  @shortdoc "Install migration and controller for Bildad Jobs Framework"
+  @moduledoc """
+  Mix task to install the Bildad Jobs Framework into an application.
+  """
+
+  @shortdoc "Install the Bildad Jobs Framework, some manual steps are required."
+  @doc """
+  Requires the `--application` name you want to install the Bildad Jobs Framework into.
+
+  It will install:
+  * a database migration to create the necessary tables
+  * a controller to run the job engine
+
+  You must manually add:
+  * an entry in your router.ex file to route to the controller
+  * a supervised child in your application.ex file to run the job killer task
+
+  You must also
+  * set up a cron job to periodically call the job engine controller.
+  """
   def run(args) do
     IO.puts("Installing Bildad Jobs Framework...#{inspect(args)}")
 
@@ -15,7 +33,7 @@ defmodule Mix.Tasks.Bildad.Install do
     end
   end
 
-  def usage() do
+  defp usage() do
     """
     You must provide the name of the application you want to install the Bildad Jobs Framework into.
 
@@ -25,7 +43,7 @@ defmodule Mix.Tasks.Bildad.Install do
     """
   end
 
-  def do_install(application) do
+  defp do_install(application) do
     controller_template_content = File.read!(get_template_file_path("jobs_controller.ex.eex"))
 
     controller_file_content =
@@ -79,11 +97,11 @@ defmodule Mix.Tasks.Bildad.Install do
     IO.puts("")
   end
 
-  def get_template_file_path(filename) do
+  defp get_template_file_path(filename) do
     Application.app_dir(:bildad, ["priv", "templates", filename])
   end
 
-  def zero_pad(nbr) do
+  defp zero_pad(nbr) do
     :io_lib.format("~2..0B", [nbr]) |> List.to_string()
   end
 end
