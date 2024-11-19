@@ -8,6 +8,7 @@ defmodule Bildad.Job.JobConfig do
     :repo,
     default_page_size: 25,
     # immutable values
+    job_engine_batch_size: 10,
     queue_status_running: "RUNNING",
     queue_status_available: "AVAILABLE",
     job_run_status_running: "RUNNING",

@@ -23,15 +23,8 @@ defmodule Bildad.Job.JobEngine do
   This should be called by a single cron job in your environment so that the engine is run on one node at a time.
   """
   def run_job_engine(job_config) do
-    expire_resp_data =
-      job_config.repo
-      |> JobConfig.new()
-      |> do_expire_jobs()
-
-    start_resp_data =
-      job_config.repo
-      |> JobConfig.new()
-      |> do_start_jobs()
+    expire_resp_data = do_expire_jobs(job_config)
+    start_resp_data = do_start_jobs(job_config)
 
     %{
       start: start_resp_data,
@@ -61,7 +54,7 @@ defmodule Bildad.Job.JobEngine do
   # Internal function that gets jobs in the queue that are available to run (not already running) and runs them
   defp do_start_jobs(job_config) do
     job_config
-    |> Jobs.list_jobs_to_run_in_the_queue()
+    |> Jobs.list_jobs_to_run_in_the_queue(0, job_config.job_engine_batch_size)
     |> Enum.map(fn job_in_the_queue ->
       try do
         run_a_job(job_config, job_in_the_queue)
