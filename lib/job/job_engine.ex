@@ -21,6 +21,10 @@ defmodule Bildad.Job.JobEngine do
   This function is called by the job scheduler to run the job engine.
 
   This should be called by a single cron job in your environment so that the engine is run on one node at a time.
+
+  THIS FUNCTION MUST NOT BE RUN INSIDE A TRANSACTION. 
+  The jobs should run in isolation from each other.
+  The queue record should be marked as 'RUNNING' as quickly as possible.
   """
   def run_job_engine(job_config) do
     expire_resp_data = do_expire_jobs(job_config)
