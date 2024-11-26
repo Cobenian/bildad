@@ -17,7 +17,7 @@ defmodule Bildad.Job.JobKiller do
   The check time is the number of seconds between checks for jobs to kill. It is OPTIONAL and defaults to 60 seconds.
   """
   def start_link(opts) do
-    Logger.warning("start link called for JobKiller #{inspect(opts)}")
+    Logger.info("start link called for JobKiller #{inspect(opts)}")
     Task.start_link(__MODULE__, :run, [opts[:repo], opts[:check_time_in_seconds]])
   end
 
@@ -25,22 +25,22 @@ defmodule Bildad.Job.JobKiller do
   Checks for jobs that need to be killed ON THIS NODE and tries to kill them.
   """
   def run(repo, check_time_in_seconds) do
-    Logger.warning("init called for JobKiller #{inspect(check_time_in_seconds)}")
+    Logger.info("init called for JobKiller #{inspect(check_time_in_seconds)}")
     seconds = check_time_in_seconds || 60
     Process.sleep(1000 * seconds)
-    Logger.warning("yawn, JobKiller woke up from a nice nap")
+    Logger.debug("yawn, JobKiller woke up from a nice nap")
     job_config = JobConfig.new(repo)
     job_runs_to_kill = Jobs.list_job_runs_to_kill(job_config)
-    Logger.warning("jobs_to_kill: #{inspect(Enum.count(job_runs_to_kill))}")
+    Logger.info("jobs_to_kill: #{inspect(Enum.count(job_runs_to_kill))}")
 
     job_runs_to_kill
     |> Enum.map(fn job_run_to_kill ->
-      Logger.warning("time to kill a job #{inspect(job_run_to_kill, pretty: true)}")
+      Logger.info("time to kill a job #{inspect(job_run_to_kill, pretty: true)}")
       r = JobEngine.kill_a_job(job_config, job_run_to_kill)
       Logger.info("killed a job: #{inspect(r)}")
-      Logger.warning("killed a job")
+      Logger.debug("killed a job")
     end)
 
-    Logger.warning("all done!")
+    Logger.debug("all done!")
   end
 end
