@@ -1,8 +1,16 @@
 # Changelog
 
-## v0.1.6 (2024-11-19)
+## v0.1.8 (2024-12-07)
 
 Current version. Recommended for use.
+
+## v0.1.7 (2024-11-19)
+
+Minor tweaks as the library is prepared. Not recommended to use this version.
+
+## v0.1.6 (2024-11-19)
+
+Minor tweaks as the library is prepared. Not recommended to use this version.
 
 ## v0.1.5 (2024-11-18)
 
