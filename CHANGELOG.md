@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.9 (2024-12-16)
+
+Better error logging when a job fails with `{:error, reason}`.
+
 ## v0.1.8 (2024-12-07)
 
 Current version. Recommended for use.

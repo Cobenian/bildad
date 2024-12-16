@@ -533,7 +533,11 @@ defmodule Bildad.Job.JobEngine do
 
               {:error, e} ->
                 Logger.error("Error running job: #{inspect(e)}")
-                Logger.error(Exception.format_stacktrace())
+
+                Logger.error(
+                  Exception.format_stacktrace(Process.info(self(), :current_stacktrace))
+                )
+
                 fail_a_job(job_config, job_run, e)
             end
           rescue
