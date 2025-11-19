@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.10 (2025-11-19)
+
+Add function to find all jobs with status `RUNNING` to allow for job resumption/restart post-deployment.
+
 ## v0.1.9 (2024-12-16)
 
 Better error logging when a job fails with `{:error, reason}`.

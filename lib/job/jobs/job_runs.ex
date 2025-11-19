@@ -125,6 +125,17 @@ defmodule Bildad.Job.JobRuns do
   end
 
   @doc """
+  Lists all job runs that are currently in RUNNING status.
+  """
+  def list_running_job_runs(job_config) do
+    from(r in JobRun,
+      where: r.status == ^job_config.job_run_status_running,
+      order_by: [asc: r.started_at]
+    )
+    |> job_config.repo.all()
+  end
+
+  @doc """
   Returns the number of job runs. (This is useful for pagination.)
   """
   def get_number_of_job_runs(job_config) do
