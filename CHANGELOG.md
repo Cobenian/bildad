@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.11 (2026-02-18)
+
+Fix stacktrace logging issue in `launch_job_process/2`. Updated hex deps.
+
 ## v0.1.10 (2025-11-19)
 
 Add function to find all jobs with status `RUNNING` to allow for job resumption/restart post-deployment.

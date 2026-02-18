@@ -4,7 +4,7 @@ defmodule Bildad.MixProject do
   def project do
     [
       app: :bildad,
-      version: "0.1.10",
+      version: "0.1.11",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -30,9 +30,9 @@ defmodule Bildad.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ex_json_schema, "~> 0.10.2"},
-      {:phoenix_ecto, "~> 4.4"},
-      {:ecto_sql, "~> 3.6"},
+      {:ex_json_schema, "~> 0.11.2"},
+      {:phoenix_ecto, "~> 4.6"},
+      {:ecto_sql, "~> 3.12"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
