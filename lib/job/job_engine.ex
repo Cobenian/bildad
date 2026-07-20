@@ -278,14 +278,17 @@ defmodule Bildad.Job.JobEngine do
       job_queue_entry
       |> job_config.repo.preload(:current_job_run)
       |> case do
-        %JobQueueEntry{current_job_run: %JobRun{status: ^running_status}} ->
-          job_queue_entry
+        # Bind the PRELOADED entry — using the original `job_queue_entry` here
+        # reads an unloaded :current_job_run and crashes JobRun.changeset with
+        # `Ecto.Association.NotLoaded.__changeset__/0 is undefined`.
+        %JobQueueEntry{current_job_run: %JobRun{status: ^running_status}} = entry ->
+          entry
           |> JobQueueEntry.changeset(%{
             status: job_config.queue_status_available
           })
           |> job_config.repo.update!()
 
-          job_queue_entry.current_job_run
+          entry.current_job_run
           |> JobRun.changeset(%{
             status: job_config.job_run_status_done,
             result: job_config.job_run_result_failed,

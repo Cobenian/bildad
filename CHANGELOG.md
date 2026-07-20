@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.12 (2026-07-20)
+
+Fix `stop_job_in_queue/2` crashing with `Ecto.Association.NotLoaded.__changeset__/0
+is undefined`. The `case` arm referenced the passed-in entry's `:current_job_run`
+(unloaded) instead of the internally-preloaded struct; it now binds and uses the
+preloaded entry.
+
 ## v0.1.11 (2026-02-18)
 
 Fix stacktrace logging issue in `launch_job_process/2`. Updated hex deps.
