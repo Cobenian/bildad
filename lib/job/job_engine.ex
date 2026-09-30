@@ -3,6 +3,8 @@ defmodule Bildad.Job.JobEngine do
   This module contains the logic for enqueuing, running, killing and expiring jobs in the Bildad job scheduling framework.
   """
 
+  import Ecto.Query
+
   alias Bildad.Job.Jobs
 
   alias Bildad.Job.JobQueueEntry
@@ -173,85 +175,110 @@ defmodule Bildad.Job.JobEngine do
 
   @doc """
   This function is called by the job scheduler to run a job.
+
+  The queue entry is first claimed: it is moved from available to running only if it is
+  still available, so when two callers try to run the same entry only one of them runs it.
+  The other gets `{:error, :job_not_available}` and nothing is launched.
+
+  If the job context fails the template's schema, the job is not launched. One failed job
+  run is recorded and the entry is removed from the queue, since the same context would fail
+  on every retry. Returns `{:error, {:invalid_job_context, job_run}}`.
   """
   def run_a_job(%JobConfig{} = job_config, %JobQueueEntry{} = job_queue_entry) do
     job_config.repo.transaction(fn ->
-      job_template = job_config.repo.get(JobTemplate, job_queue_entry.job_template_id)
-      job_process_name = Ecto.UUID.generate()
-      now = DateTime.utc_now()
-
-      case validate_job_context(job_template.job_context_schema, job_queue_entry.job_context) do
-        :ok ->
-          job_run =
-            %JobRun{}
-            |> JobRun.changeset(%{
-              job_queue_entry_id: job_queue_entry.id,
-              job_run_identifier: job_queue_entry.job_run_identifier,
-              job_template_id: job_template.id,
-              retry: get_retry_count(job_config, job_queue_entry),
-              job_process_name: job_process_name,
-              started_at: now,
-              timeout_at: NaiveDateTime.add(now, job_queue_entry.timeout_in_minutes, :minute),
-              expires_at: NaiveDateTime.add(now, 30, :day),
-              status: job_config.job_run_status_running,
-              job_context: job_queue_entry.job_context
-            })
-            |> job_config.repo.insert!()
-
-          job_queue_entry
-          |> JobQueueEntry.changeset(%{
-            status: job_config.queue_status_running,
-            current_job_run_id: job_run.id
-          })
-          |> job_config.repo.update!()
-
-          job_run
-
-        {:error, failures} ->
-          failures_str =
-            """
-            Invalid job context. Failed schema validation:
-
-            #{for {text, location} <- failures do
-              "#{text} (at: #{location})"
-            end}
-            """
-
-          job_run =
-            %JobRun{}
-            |> JobRun.changeset(%{
-              job_queue_entry_id: job_queue_entry.id,
-              job_run_identifier: job_queue_entry.job_run_identifier,
-              job_template_id: job_template.id,
-              retry: get_retry_count(job_config, job_queue_entry),
-              job_process_name: job_process_name,
-              started_at: now,
-              timeout_at: NaiveDateTime.add(now, job_queue_entry.timeout_in_minutes, :minute),
-              expires_at: NaiveDateTime.add(now, 30, :day),
-              ends_at: now,
-              status: job_config.job_run_status_done,
-              result: job_config.job_run_result_failed,
-              reason: failures_str,
-              job_context: job_queue_entry.job_context
-            })
-            |> job_config.repo.insert!()
-
-          job_queue_entry
-          |> JobQueueEntry.changeset(%{
-            status: job_config.queue_status_available,
-            current_job_run_id: job_run.id
-          })
-          |> job_config.repo.update!()
-
-          job_run
+      case claim_job_queue_entry(job_config, job_queue_entry) do
+        nil -> job_config.repo.rollback(:job_not_available)
+        claimed_entry -> start_job_run(job_config, claimed_entry)
       end
     end)
     |> case do
-      {:ok, job_run} ->
+      {:ok, {:launch, job_run}} ->
         launch_job_process(job_config, job_run)
+
+      {:ok, {:invalid_job_context, job_run}} ->
+        {:error, {:invalid_job_context, job_run}}
 
       {:error, e} ->
         {:error, e}
+    end
+  end
+
+  # Moves the entry from available to running, only if it is still available. The update
+  # locks the row and checks the status against the latest committed version, so of two
+  # concurrent callers only one changes a row. Returns the freshly read entry, or nil when
+  # this caller did not claim it.
+  defp claim_job_queue_entry(%JobConfig{} = job_config, %JobQueueEntry{id: id}) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    from(e in JobQueueEntry,
+      where: e.id == ^id and e.status == ^job_config.queue_status_available
+    )
+    |> job_config.repo.update_all(set: [status: job_config.queue_status_running, updated_at: now])
+    |> case do
+      {1, _} -> job_config.repo.get!(JobQueueEntry, id)
+      {_, _} -> nil
+    end
+  end
+
+  defp start_job_run(%JobConfig{} = job_config, %JobQueueEntry{} = job_queue_entry) do
+    job_template = job_config.repo.get(JobTemplate, job_queue_entry.job_template_id)
+    now = DateTime.utc_now()
+
+    job_run_attrs = %{
+      job_queue_entry_id: job_queue_entry.id,
+      job_run_identifier: job_queue_entry.job_run_identifier,
+      job_template_id: job_template.id,
+      retry: get_retry_count(job_config, job_queue_entry),
+      job_process_name: Ecto.UUID.generate(),
+      started_at: now,
+      timeout_at: NaiveDateTime.add(now, job_queue_entry.timeout_in_minutes, :minute),
+      expires_at: NaiveDateTime.add(now, 30, :day),
+      job_context: job_queue_entry.job_context
+    }
+
+    case validate_job_context(job_template.job_context_schema, job_queue_entry.job_context) do
+      :ok ->
+        job_run =
+          %JobRun{}
+          |> JobRun.changeset(Map.put(job_run_attrs, :status, job_config.job_run_status_running))
+          |> job_config.repo.insert!()
+
+        job_queue_entry
+        |> JobQueueEntry.changeset(%{current_job_run_id: job_run.id})
+        |> job_config.repo.update!()
+
+        {:launch, job_run}
+
+      {:error, failures} ->
+        failures_str =
+          """
+          Invalid job context. Failed schema validation:
+
+          #{for {text, location} <- failures do
+            "#{text} (at: #{location})"
+          end}
+          """
+
+        Logger.warning(
+          "Not running job #{job_queue_entry.job_run_identifier} and removing it from the queue: " <>
+            String.trim(failures_str)
+        )
+
+        job_run =
+          %JobRun{}
+          |> JobRun.changeset(
+            Map.merge(job_run_attrs, %{
+              ended_at: now,
+              status: job_config.job_run_status_done,
+              result: job_config.job_run_result_failed,
+              reason: failures_str
+            })
+          )
+          |> job_config.repo.insert!()
+
+        job_config.repo.delete!(job_queue_entry)
+
+        {:invalid_job_context, job_run}
     end
   end
 

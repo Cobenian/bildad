@@ -77,6 +77,16 @@ so that the job context can be validated before a job is run.
 * custom jobs that have a `run_job` function that takes the job context
 * job templates that know the module name and have the schema for the job context
 
+## Running the tests
+
+The engine tests run against MySQL. Point `BILDAD_TEST_DATABASE_URL` at a scratch database;
+it is created if it does not exist, and the migration that `mix bildad.install` generates is
+run against it.
+
+```bash
+BILDAD_TEST_DATABASE_URL="ecto://user:password@localhost:3306/bildad_test" mix test
+```
+
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
 and published on [HexDocs](https://hexdocs.pm). The docs can
 be found at <https://hexdocs.pm/bildad>.
