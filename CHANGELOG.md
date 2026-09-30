@@ -2,7 +2,8 @@
 
 ## v0.1.13 (2026-09-30)
 
-Three fixes to launching jobs, and a registry for job processes. No database changes.
+Three fixes to launching jobs, a registry for job processes, and a shorter run expiry. No
+database changes.
 
 * **A job context that fails the template's schema is no longer launched.** Previously the
   failed run was recorded but the job was launched anyway, so it ran with an invalid
@@ -35,6 +36,9 @@ Three fixes to launching jobs, and a registry for job processes. No database cha
   `{Registry, keys: :unique, name: Bildad.JobRegistry}` itself. Code that looked a job
   process up with `Process.whereis(String.to_atom(job_process_name))` must use
   `find_elixir_process/1` instead.
+* **Run expiry reduced from 30 days to 2 days.** Expiry only cleans up runs whose process
+  vanished; running jobs are still bounded by their own timeout. It is set by the new
+  `JobConfig` field `job_run_expiry_in_days` (default 2) and counted from each run's start.
 * Test suite added (MySQL; see the README).
 
 ## v0.1.12 (2026-07-20)

@@ -76,6 +76,35 @@ defmodule Bildad.Job.JobEngineTest do
     end
   end
 
+  describe "job run expiry" do
+    test "a launched run expires 2 days after it starts", %{config: config} do
+      {:ok, job_run} = JobEngine.run_a_job(config, enqueue(config, %{}, job: TestJobs.Instant))
+      await_done(job_run)
+
+      job_run = Repo.get!(JobRun, job_run.id)
+      assert NaiveDateTime.diff(job_run.expires_at, job_run.started_at, :day) == 2
+    end
+
+    test "a run whose context fails the schema also expires 2 days after it starts", %{
+      config: config
+    } do
+      entry = enqueue(config, %{"n" => "not an integer"})
+      assert {:error, {:invalid_job_context, job_run}} = JobEngine.run_a_job(config, entry)
+
+      job_run = Repo.get!(JobRun, job_run.id)
+      assert NaiveDateTime.diff(job_run.expires_at, job_run.started_at, :day) == 2
+    end
+
+    test "job_run_expiry_in_days in the config is honoured", %{config: config} do
+      config = %{config | job_run_expiry_in_days: 5}
+      {:ok, job_run} = JobEngine.run_a_job(config, enqueue(config, %{}, job: TestJobs.Instant))
+      await_done(job_run)
+
+      job_run = Repo.get!(JobRun, job_run.id)
+      assert NaiveDateTime.diff(job_run.expires_at, job_run.started_at, :day) == 5
+    end
+  end
+
   describe "launching a job process" do
     # A guard rather than a reproduction: the old race was a window of microseconds.
     test "a job that finishes at once is launched every time", %{config: config} do
@@ -161,7 +190,7 @@ defmodule Bildad.Job.JobEngineTest do
       status: "RUNNING",
       started_at: now,
       timeout_at: NaiveDateTime.add(now, 5, :minute),
-      expires_at: NaiveDateTime.add(now, 30, :day),
+      expires_at: NaiveDateTime.add(now, 2, :day),
       job_context: %{}
     }
   end

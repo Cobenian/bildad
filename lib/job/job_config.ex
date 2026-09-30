@@ -7,6 +7,10 @@ defmodule Bildad.Job.JobConfig do
   defstruct [
     :repo,
     default_page_size: 25,
+    # How long after a job run starts it expires, if it has neither succeeded nor failed by
+    # then (for example because its process vanished). Running jobs are still bounded by
+    # their own timeout; expiry only cleans up runs nothing else can finish.
+    job_run_expiry_in_days: 2,
     # immutable values
     job_engine_batch_size: 10,
     queue_status_running: "RUNNING",
