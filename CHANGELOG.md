@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.13 (unreleased)
+
+Two fixes to `run_a_job/2`. No database changes.
+
+* **A job context that fails the template's schema is no longer launched.** Previously the
+  failed run was recorded but the job was launched anyway, so it ran with an invalid
+  context and could be recorded as succeeded, and the entry was put back in the queue to
+  fail again on every engine run. Now one FAILED job run is recorded (with `ended_at`, which
+  was not being set), the job is not launched, and the entry is removed from the queue,
+  since the same context fails every time whatever `max_retries` is. `run_a_job/2` returns
+  `{:error, {:invalid_job_context, job_run}}`.
+* **A queue entry is claimed before it is run.** `run_a_job/2` moves the entry from
+  `AVAILABLE` to `RUNNING` with a conditional update and checks that exactly one row changed.
+  When two callers try to run the same entry, one runs it and the other gets
+  `{:error, :job_not_available}` and nothing is launched. The entry is re-read after the
+  claim, so a stale struct from the caller is not used.
+* Test suite added (MySQL; see the README).
+
 ## v0.1.12 (2026-07-20)
 
 Fix `stop_job_in_queue/2` crashing with `Ecto.Association.NotLoaded.__changeset__/0
