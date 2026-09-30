@@ -232,7 +232,7 @@ defmodule Bildad.Job.JobEngine do
       job_process_name: Ecto.UUID.generate(),
       started_at: now,
       timeout_at: NaiveDateTime.add(now, job_queue_entry.timeout_in_minutes, :minute),
-      expires_at: NaiveDateTime.add(now, 30, :day),
+      expires_at: NaiveDateTime.add(now, job_config.job_run_expiry_in_days, :day),
       job_context: job_queue_entry.job_context
     }
 
