@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+* **A job that finishes at once no longer makes the launch fail, and no atom is created per
+  job run.** The launcher used to spawn the job process and then register it under an atom
+  made from the run's `job_process_name`; if the job had already finished, the registration
+  raised. Now the job process registers itself in a `Registry` (`Bildad.JobRegistry`, unique
+  keys, local to the node) under the `job_process_name` string as its first action, before it
+  runs the job, and `launch_job_process/2` waits for that acknowledgement. If the process ends
+  before it registers, the job has not run: the run is failed and
+  `{:error, {:not_launched, reason}}` is returned (this replaces
+  `{:error, "Failed to register process: ..."}`). If it has not registered within 5 seconds,
+  `{:error, :registration_timeout}` is returned and the process is left alone.
+  `find_elixir_process/1` (used by `kill_a_job/2` and so the `JobKiller`) looks the process
+  up in the registry. The registry links to registered processes, so running jobs stop if
+  Bildad's application stops (as they do when the node stops).
+* **Upgrading.** Bildad now has an application module that starts `Bildad.JobRegistry`. It
+  starts on its own when Bildad is a normal runtime dependency. A host that lists Bildad with
+  `runtime: false` or under `included_applications` must start
+  `{Registry, keys: :unique, name: Bildad.JobRegistry}` itself. Code that looked a job
+  process up with `Process.whereis(String.to_atom(job_process_name))` must use
+  `find_elixir_process/1` instead.
+
 ## v0.1.13 (unreleased)
 
 Two fixes to `run_a_job/2`. No database changes.

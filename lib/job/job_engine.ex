@@ -524,9 +524,29 @@ defmodule Bildad.Job.JobEngine do
     end
   end
 
+  # How long the launcher waits for a new job process to register itself. Registering is the
+  # process's first action and does not block, so this is only reached if the node is badly
+  # overloaded.
+  @registration_timeout_ms 5_000
+
   @doc """
   Launches the Elixir process for the job passing it the job context.
-  It registers the process with the job identifier so that it can be found later.
+
+  The process registers itself in `Bildad.JobRegistry` under the job run's
+  `job_process_name`, before it runs the job, and this function waits for that. So a job
+  that finishes at once cannot make the launch fail, and the name is a string key: no atom
+  is created per job run. The registry is local to the node, like the process.
+
+  Returns `{:ok, job_run}` once the process is registered.
+
+  If the process ends before it registers, the job has not run: the job run is failed and
+  `{:error, {:not_launched, reason}}` is returned. If it has not registered within
+  #{@registration_timeout_ms} ms, `{:error, :registration_timeout}` is returned and the
+  process is left alone: if it goes on to run the job it records the outcome as usual, and
+  otherwise the job run stays RUNNING until the job engine expires it (`expires_at`).
+
+  The registry links to the processes registered in it, so a job process stops if Bildad's
+  application (and so the registry) stops.
   """
   def launch_job_process(%JobConfig{} = job_config, %JobRun{} = job_run) do
     Logger.info("time to launch a job process for #{job_run.job_run_identifier}")
@@ -542,52 +562,84 @@ defmodule Bildad.Job.JobEngine do
 
     # launch the process
     process_name = job_run.job_process_name
-    name_atom = String.to_atom(process_name)
     process_module = job_run.job_template.job_module_name
     process_module_atom = String.to_atom(process_module)
 
-    pid =
-      Process.spawn(
-        fn ->
-          Logger.info("running job in process #{inspect(self())}")
+    # The process acknowledges its registration through an alias, so an acknowledgement
+    # that arrives after this function has given up is dropped instead of being left in the
+    # caller's mailbox.
+    registered = Process.alias()
 
-          try do
-            Logger.info(
-              "running job process #{process_module_atom} for context: #{inspect(job_run.job_context)}"
-            )
+    {pid, monitor} =
+      spawn_monitor(fn ->
+        {:ok, _owner} = Registry.register(Bildad.JobRegistry, process_name, nil)
+        send(registered, {registered, :registered})
 
-            apply(process_module_atom, :run_job, [job_run.job_context])
-            |> case do
-              {:ok, _} ->
-                complete_a_job(job_config, job_run)
+        Logger.info("running job in process #{inspect(self())}")
 
-              {:error, e} ->
-                Logger.error("Error running job: #{inspect(e)}")
+        try do
+          Logger.info(
+            "running job process #{process_module_atom} for context: #{inspect(job_run.job_context)}"
+          )
 
-                case Process.info(self(), :current_stacktrace) do
-                  {:current_stacktrace, stacktrace} ->
-                    Logger.error(Exception.format_stacktrace(stacktrace))
+          apply(process_module_atom, :run_job, [job_run.job_context])
+          |> case do
+            {:ok, _} ->
+              complete_a_job(job_config, job_run)
 
-                  _ ->
-                    Logger.error("(stacktrace unavailable)")
-                end
-
-                fail_a_job(job_config, job_run, e)
-            end
-          rescue
-            e ->
+            {:error, e} ->
               Logger.error("Error running job: #{inspect(e)}")
-              Logger.error(Exception.format_stacktrace())
+
+              case Process.info(self(), :current_stacktrace) do
+                {:current_stacktrace, stacktrace} ->
+                  Logger.error(Exception.format_stacktrace(stacktrace))
+
+                _ ->
+                  Logger.error("(stacktrace unavailable)")
+              end
+
               fail_a_job(job_config, job_run, e)
           end
-        end,
-        []
-      )
+        rescue
+          e ->
+            Logger.error("Error running job: #{inspect(e)}")
+            Logger.error(Exception.format_stacktrace())
+            fail_a_job(job_config, job_run, e)
+        end
+      end)
 
-    if Process.register(pid, name_atom) do
-      {:ok, job_run}
-    else
-      {:error, "Failed to register process: #{inspect(pid)}"}
+    # The acknowledgement is sent before the job starts, so it arrives before the :DOWN of a
+    # job that finishes at once. A :DOWN first means the process ended before it registered,
+    # so the job did not run.
+    result =
+      receive do
+        {^registered, :registered} ->
+          {:ok, job_run}
+
+        {:DOWN, ^monitor, :process, ^pid, reason} ->
+          Logger.error(
+            "Job process for #{job_run.job_run_identifier} ended before it registered: #{inspect(reason)}"
+          )
+
+          fail_a_job(job_config, job_run, {:not_launched, reason})
+          {:error, {:not_launched, reason}}
+      after
+        @registration_timeout_ms ->
+          Logger.error(
+            "Job process for #{job_run.job_run_identifier} did not register within #{@registration_timeout_ms} ms"
+          )
+
+          {:error, :registration_timeout}
+      end
+
+    Process.unalias(registered)
+    Process.demonitor(monitor, [:flush])
+
+    # An acknowledgement sent just before the alias was removed is already in the mailbox.
+    receive do
+      {^registered, :registered} -> {:ok, job_run}
+    after
+      0 -> result
     end
   end
 
@@ -596,13 +648,11 @@ defmodule Bildad.Job.JobEngine do
   If the process is not running or is running on another node then nil is returned.
   """
   def find_elixir_process(%JobRun{} = job_run) do
-    # find the process by name
-    process_name = job_run.job_process_name
-    name_atom = String.to_atom(process_name)
-
-    case Process.whereis(name_atom) do
-      nil -> nil
-      process_pid -> process_pid
+    # A process is removed from the registry shortly after it ends, not at once, so check
+    # that it is still alive.
+    case Registry.lookup(Bildad.JobRegistry, job_run.job_process_name) do
+      [{process_pid, _value}] -> if Process.alive?(process_pid), do: process_pid
+      [] -> nil
     end
   end
 
