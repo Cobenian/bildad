@@ -56,7 +56,7 @@ config :bildad,
 * Every failure reason is cut to 255 code points in one private helper.
 * Recommended to release on its own as 0.1.14 (no new dependency, no config, no table).
 
-## P1: live progress
+## P1: live progress (done)
 
 ### Identity
 
@@ -131,7 +131,7 @@ or a distributed PubSub adapter; otherwise read persisted progress.
 * Read with `Jobs.get_job_run_detail/2` and `Jobs.list_job_run_details/2` (without
   `log_tail`), and `has_one :job_run_detail` on `JobRun`.
 
-## P2: live introspection
+## P2: live introspection (done)
 
 * Node: recorded in `job_run_details.node` by the P1 writer at launch.
 * `Bildad.Introspect.info(job_process_name)` resolves the name through
@@ -149,7 +149,7 @@ or a distributed PubSub adapter; otherwise read persisted progress.
 * `Bildad.Introspect.run_info(job_config, job_run)`: node from `job_run_details`
   (`{:error, :no_details}` without a row), then `remote_info/3`.
 
-## P3: run log retention
+## P3: run log retention (done)
 
 Simpler than first planned: no buffer process, no ETS.
 
@@ -157,16 +157,18 @@ Simpler than first planned: no buffer process, no ETS.
   by `Bildad.Application` when `run_log.enabled` and `run_details` are set, or at runtime
   with `Bildad.RunLog.attach/0`; `detach/0` removes it, and it is removed when the
   application stops.
-* `log/2` runs in the logging process. It returns at once unless the event's metadata has
-  `bildad_run_log: true`, which only the job process sets. It formats the message only (no
+* `log/2` runs in the logging process. It returns at once unless there is
+  a buffer in the logging process's dictionary, which only a job process has. It formats the message only (no
   metadata) with bounded size (`chars_limit`), runs the redaction hook, strips NUL and
   invalid UTF-8, cuts to `max_line_bytes` on a UTF-8 boundary, and appends
   `"<ISO8601> [<level>] <message>"` to a ring buffer of `max_lines` in the **job process's
   own dictionary**. Everything is in `try`; nothing can remove the handler.
 * Redaction fails closed: a hook that raises or returns anything but a binary or `:drop`
   drops the line and counts it as dropped.
-* The metadata is set after the launch line, so it is never captured. Tasks are not
-  captured (they do not inherit Logger metadata).
+* The buffer is started after the launch line, so that line is never captured. Tasks are
+  not captured (they have no buffer). No Logger metadata is set, so nothing shows in host
+  logs. Saved lines are separated by an ASCII record separator plus newline, because a
+  message can span several lines.
 * Persistence, only from a failed or killed run:
   * the job process, after a failed outcome has been decided, writes the buffer to
     `job_run_details.log_tail` (best-effort, outside any transaction); a succeeded run

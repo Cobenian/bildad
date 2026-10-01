@@ -12,6 +12,7 @@ defmodule Bildad.Job.JobEngine do
   alias Bildad.Job.JobTemplate
   alias Bildad.Job.JobConfig
   alias Bildad.RunDetails.Writer
+  alias Bildad.RunLog
   alias Bildad.RunState
 
   alias ExJsonSchema.Schema
@@ -33,6 +34,7 @@ defmodule Bildad.Job.JobEngine do
   def run_job_engine(job_config) do
     expire_resp_data = do_expire_jobs(job_config)
     start_resp_data = do_start_jobs(job_config)
+    prune_run_logs(job_config)
 
     %{
       start: start_resp_data,
@@ -57,6 +59,19 @@ defmodule Bildad.Job.JobEngine do
       end)
 
     %{ok_count: ok_count, error_count: error_count}
+  end
+
+  # Removes saved run logs past their retention, one batch per engine run, whenever run
+  # details are on (also after the run log itself has been turned off). Never fails the
+  # engine run.
+  defp prune_run_logs(job_config) do
+    if Bildad.Config.run_details?() do
+      try do
+        RunLog.prune(job_config)
+      rescue
+        e -> Logger.warning("Could not prune saved run logs: #{Exception.message(e)}")
+      end
+    end
   end
 
   # Internal function that gets jobs in the queue that are available to run (not already running) and runs them
@@ -365,6 +380,8 @@ defmodule Bildad.Job.JobEngine do
         nil
 
       process_pid ->
+        # Its kept log lines (with the run log on) are read before the kill and saved after.
+        run_log = RunLog.read_buffer(process_pid)
         try_to_kill_process(process_pid)
 
         job_config.repo.transaction(fn ->
@@ -401,8 +418,12 @@ defmodule Bildad.Job.JobEngine do
           job_run
         end)
         |> tap(fn
-          {:ok, %JobRun{} = job_run} -> Bildad.Telemetry.run_event(:killed, job_run)
-          _ -> :ok
+          {:ok, %JobRun{} = job_run} ->
+            if run_log, do: RunLog.save(job_config.repo, job_run.id, run_log)
+            Bildad.Telemetry.run_event(:killed, job_run)
+
+          _ ->
+            :ok
         end)
     end
   end
@@ -651,6 +672,9 @@ defmodule Bildad.Job.JobEngine do
         context_keys(job_run.job_context)
     )
 
+    # After the launch line, so it is never kept.
+    RunLog.start_capture(run_state)
+
     start_time = System.monotonic_time()
 
     :telemetry.execute(
@@ -693,6 +717,7 @@ defmodule Bildad.Job.JobEngine do
       end
 
     record_outcome(job_config, job_run, outcome)
+    RunLog.finish_capture(run_state, outcome != :succeeded)
     emit_end(run_state, start_time, outcome, ending)
 
     # After an exit or a throw the process still ends abnormally, as it did before the

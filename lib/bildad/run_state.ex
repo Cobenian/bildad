@@ -12,7 +12,7 @@ defmodule Bildad.RunState do
   @key :"$bildad_job"
 
   @enforce_keys [:identity, :repo, :throttle, :progress_interval_ms, :run_details?]
-  defstruct [:identity, :repo, :throttle, :progress_interval_ms, :run_details?, run_log: nil]
+  defstruct [:identity, :repo, :throttle, :progress_interval_ms, :run_details?, run_log?: false]
 
   @doc "Builds the state for a job run whose template is preloaded."
   def new(repo, %JobRun{} = job_run) do
@@ -34,7 +34,8 @@ defmodule Bildad.RunState do
       repo: repo,
       throttle: throttle,
       progress_interval_ms: interval,
-      run_details?: Bildad.Config.run_details?()
+      run_details?: Bildad.Config.run_details?(),
+      run_log?: Bildad.Config.run_log?()
     }
   end
 

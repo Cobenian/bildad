@@ -13,6 +13,7 @@ defmodule Bildad.JobCase do
   using do
     quote do
       import Bildad.JobCase
+      import Ecto.Query
       alias Bildad.Job.{JobConfig, JobEngine, JobQueueEntry, JobRun, JobRunDetail, JobTemplate}
       alias Bildad.TestJobs
       alias Bildad.TestRepo, as: Repo

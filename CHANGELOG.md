@@ -29,6 +29,14 @@ application that does not use them, apart from the notes under "Behaviour change
   one, never creating an atom from a stored node name, never raising). Returns only
   `current_function`, `current_stacktrace` (arities, no arguments), `memory`,
   `message_queue_len`, `reductions`, `status` and `node`.
+* **`Bildad.RunLog`** (optional, needs run details): a logger handler keeps the last lines
+  each running job's own process logs (default 200 lines of up to 1 KB, at `:info` and
+  above, message only, through an optional redaction hook that fails closed) and saves them
+  with the run when it fails or is killed by the `JobKiller`; an application that stops a
+  job itself calls `RunLog.persist_local/2` first. A succeeded run saves nothing. Read with
+  `RunLog.get/2` (saved) and `RunLog.tail/1` (live). Saved lines are removed after
+  `retention_days` (default 14) by the job engine. Enable with
+  `config :bildad, run_details: true, run_log: [enabled: true]`.
 
 Behaviour changes:
 

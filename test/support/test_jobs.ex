@@ -125,4 +125,42 @@ defmodule Bildad.TestJobs do
     @moduledoc false
     def run_job(_job_context), do: {:error, :nope}
   end
+
+  defmodule LogsThenFails do
+    @moduledoc false
+    # Logs "line 1" .. "line n" (n from the context, default 3), a debug line, then fails.
+    require Logger
+
+    def run_job(context) do
+      for i <- 1..Map.get(context, "n", 3), do: Logger.info("line #{i}")
+      Logger.debug("a debug line")
+      Task.async(fn -> Logger.info("from a task") end) |> Task.await()
+      {:error, :failed_on_purpose}
+    end
+  end
+
+  defmodule LogsThenSucceeds do
+    @moduledoc false
+    require Logger
+
+    def run_job(_context) do
+      Logger.info("all good")
+      {:ok, :done}
+    end
+  end
+
+  defmodule LogsThenWaits do
+    @moduledoc false
+    # Logs a line, then waits until the test sends :finish.
+    require Logger
+
+    def run_job(_context) do
+      Logger.warning("working on it")
+      send(:bildad_test, {:started, self()})
+
+      receive do
+        :finish -> {:ok, :finished}
+      end
+    end
+  end
 end

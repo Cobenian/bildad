@@ -100,6 +100,11 @@ config :bildad, run_details: true
 
 See `Bildad.Config` for every setting.
 
+With run details on, `config :bildad, run_log: [enabled: true]` keeps the last log lines of
+each running job and saves them when the job fails or is killed (see `Bildad.RunLog` for
+what is kept, the redaction hook, the limits and retention). The lines can hold whatever
+your jobs log, including personal data: show them only to people allowed to see job logs.
+
 With run details on, `Bildad.Introspect.run_info/2` shows what a running job is doing (its
 current function and stack, memory, mailbox length, reductions), on any node connected to
 the caller's.

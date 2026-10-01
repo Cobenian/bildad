@@ -34,6 +34,16 @@ defmodule Bildad.Application do
       }
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: Bildad.Supervisor)
+    with {:ok, pid} <-
+           Supervisor.start_link(children, strategy: :one_for_one, name: Bildad.Supervisor) do
+      if Bildad.Config.run_log?(), do: Bildad.RunLog.attach()
+      {:ok, pid}
+    end
+  end
+
+  @impl true
+  def stop(_state) do
+    Bildad.RunLog.detach()
+    :ok
   end
 end
