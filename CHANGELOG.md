@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+* **A job that exits or throws ends its run as FAILED.** The job process caught exceptions
+  only; `exit/1` (a `GenServer.call` timeout, say) or `throw/1` ended the process before the
+  run was finished, and the run and its entry stayed `RUNNING` until the run expired. Both
+  are now caught like an exception: the run is failed and the entry re-queued, or removed
+  once its retries are used up. The process then still ends with the same exit, so processes
+  the job linked to stop with it as before. A job that calls `exit(:normal)` is now FAILED
+  (it used to stay `RUNNING`).
+* **Recording a job's outcome is attempted once.** If the write that completes or fails the
+  run raises (the database is unavailable, say), it is logged and the process ends. A failed
+  completion is no longer followed by a second write that fails the run. The run is left to
+  expiry, as a run whose process vanished is.
+* **Every failure reason fits `job_runs.reason`.** Reasons are cut to 255 characters (code
+  points) in one place. The schema validation message was not cut at all, and other reasons
+  were cut to 256, so on a database in strict mode a long reason made the write that records
+  the failure itself fail.
+
 ## v0.1.13 (2026-09-30)
 
 Three fixes to launching jobs, a registry for job processes, and a shorter run expiry. No

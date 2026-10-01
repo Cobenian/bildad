@@ -271,7 +271,7 @@ defmodule Bildad.Job.JobEngine do
               ended_at: now,
               status: job_config.job_run_status_done,
               result: job_config.job_run_result_failed,
-              reason: failures_str
+              reason: truncate_reason(failures_str)
             })
           )
           |> job_config.repo.insert!()
@@ -280,6 +280,17 @@ defmodule Bildad.Job.JobEngine do
 
         {:invalid_job_context, job_run}
     end
+  end
+
+  # The longest failure reason `job_runs.reason` holds. The column is a `varchar(255)`
+  # (`:string` in the migration), which counts characters on both MySQL and Postgres.
+  @reason_max_length 255
+
+  # Cuts a failure reason to fit `job_runs.reason`. Every reason Bildad writes goes through
+  # here, so no write can fail on the reason's length. The column limit counts code points,
+  # not graphemes (one grapheme can be several code points), so code points are counted.
+  defp truncate_reason(reason) when is_binary(reason) do
+    reason |> String.codepoints() |> Enum.take(@reason_max_length) |> Enum.join()
   end
 
   # remove a job from the queue
@@ -432,7 +443,7 @@ defmodule Bildad.Job.JobEngine do
   """
   def fail_a_job(%JobConfig{} = job_config, %JobRun{} = job_run, error_message) do
     job_config.repo.transaction(fn ->
-      error_message_str = String.slice("#{inspect(error_message)}", 0, 256)
+      error_message_str = truncate_reason(inspect(error_message))
 
       job_run =
         job_run
@@ -577,34 +588,50 @@ defmodule Bildad.Job.JobEngine do
 
         Logger.info("running job in process #{inspect(self())}")
 
-        try do
-          Logger.info(
-            "running job process #{process_module_atom} for context: #{inspect(job_run.job_context)}"
-          )
+        outcome =
+          try do
+            Logger.info(
+              "running job process #{process_module_atom} for context: #{inspect(job_run.job_context)}"
+            )
 
-          apply(process_module_atom, :run_job, [job_run.job_context])
-          |> case do
-            {:ok, _} ->
-              complete_a_job(job_config, job_run)
+            apply(process_module_atom, :run_job, [job_run.job_context])
+            |> case do
+              {:ok, _} ->
+                :succeeded
 
-            {:error, e} ->
+              {:error, e} ->
+                Logger.error("Error running job: #{inspect(e)}")
+
+                case Process.info(self(), :current_stacktrace) do
+                  {:current_stacktrace, stacktrace} ->
+                    Logger.error(Exception.format_stacktrace(stacktrace))
+
+                  _ ->
+                    Logger.error("(stacktrace unavailable)")
+                end
+
+                {:failed, e}
+            end
+          rescue
+            e ->
               Logger.error("Error running job: #{inspect(e)}")
-
-              case Process.info(self(), :current_stacktrace) do
-                {:current_stacktrace, stacktrace} ->
-                  Logger.error(Exception.format_stacktrace(stacktrace))
-
-                _ ->
-                  Logger.error("(stacktrace unavailable)")
-              end
-
-              fail_a_job(job_config, job_run, e)
+              Logger.error(Exception.format_stacktrace(__STACKTRACE__))
+              {:failed, e}
+          catch
+            kind, reason ->
+              Logger.error("Job ended with #{kind}: #{inspect(reason, limit: 50)}")
+              Logger.error(Exception.format_stacktrace(__STACKTRACE__))
+              {:failed, {kind, reason}}
           end
-        rescue
-          e ->
-            Logger.error("Error running job: #{inspect(e)}")
-            Logger.error(Exception.format_stacktrace())
-            fail_a_job(job_config, job_run, e)
+
+        record_outcome(job_config, job_run, outcome)
+
+        # After an exit or a throw the process still ends abnormally, as it did before the
+        # run was recorded, so processes the job linked to (a `Task.async`, say) stop with it.
+        case outcome do
+          {:failed, {:exit, reason}} -> exit(reason)
+          {:failed, {:throw, value}} -> exit({:nocatch, value})
+          _ -> :ok
         end
       end)
 
@@ -642,6 +669,27 @@ defmodule Bildad.Job.JobEngine do
       0 -> result
     end
   end
+
+  # Records how the job ended, with one attempt at the database write. If that fails (the
+  # database is unavailable, say) it is only logged: the process ends and the run stays
+  # RUNNING until it expires, when the job engine fails it and re-queues or removes the
+  # entry. Nothing is retried, so a failing system is not made busier.
+  defp record_outcome(%JobConfig{} = job_config, %JobRun{} = job_run, outcome) do
+    case outcome do
+      :succeeded -> complete_a_job(job_config, job_run)
+      {:failed, reason} -> fail_a_job(job_config, job_run, reason)
+    end
+  catch
+    kind, reason ->
+      Logger.error(
+        "Could not record the outcome of job run #{job_run.job_run_identifier} " <>
+          "(#{outcome_tag(outcome)}): #{inspect(kind)} #{inspect(reason, limit: 50)}. " <>
+          "It stays RUNNING until it expires at #{job_run.expires_at}."
+      )
+  end
+
+  defp outcome_tag(:succeeded), do: "succeeded"
+  defp outcome_tag({:failed, _reason}), do: "failed"
 
   @doc """
   Locates the Elixir process by the job identifier.

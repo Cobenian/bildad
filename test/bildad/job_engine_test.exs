@@ -177,6 +177,110 @@ defmodule Bildad.Job.JobEngineTest do
     end
   end
 
+  describe "a job that exits or throws" do
+    for {job, kind} <- [
+          {TestJobs.Exits, "exit"},
+          {TestJobs.ExitsNormally, "exit"},
+          {TestJobs.Throws, "throw"}
+        ] do
+      @job job
+      @kind kind
+      test "ends its run as FAILED (#{inspect(job)})", %{config: config} do
+        entry = enqueue(config, %{}, job: @job)
+
+        {:ok, job_run} = JobEngine.run_a_job(config, entry)
+
+        finished = await_done(job_run)
+        assert finished.result == "FAILED"
+        assert finished.reason =~ @kind
+        assert finished.ended_at
+        assert is_nil(Repo.get(JobQueueEntry, entry.id)), "no retries left"
+      end
+    end
+
+    test "is re-queued when it has retries left", %{config: config} do
+      entry = enqueue(config, %{}, job: TestJobs.Exits, max_retries: 1)
+      {:ok, job_run} = JobEngine.run_a_job(config, entry)
+
+      assert await_done(job_run).result == "FAILED"
+      assert %JobQueueEntry{status: "AVAILABLE"} = Repo.get(JobQueueEntry, entry.id)
+    end
+
+    test "its linked processes stop with it", %{config: config} do
+      entry = enqueue(config, %{}, job: TestJobs.ExitsWithLinkedTask)
+      {:ok, job_run} = JobEngine.run_a_job(config, entry)
+
+      assert_receive {:linked, linked}
+      assert await_done(job_run).result == "FAILED"
+      await_dead(linked)
+    end
+  end
+
+  describe "when the outcome cannot be written" do
+    for how <- [:ok, :throw] do
+      @how how
+      test "it is only logged, once, and the process ends (#{how})", %{config: config} do
+        job_run = Repo.insert!(running_job_run(enqueue(config, %{}, job: TestJobs.Controlled)))
+        unavailable = %{config | repo: Bildad.TestRepo.Unavailable}
+
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            {:ok, _} = JobEngine.launch_job_process(unavailable, job_run)
+            assert_receive {:started, worker}
+            ref = Process.monitor(worker)
+            send(worker, {:end_with, @how})
+            assert_receive {:DOWN, ^ref, :process, ^worker, reason}, 5_000
+
+            assert reason == if(@how == :throw, do: {:nocatch, :boom}, else: :normal),
+                   "the process ends as the job ended, not with the failed write"
+          end)
+
+        assert_received :transaction_attempted
+        refute_received :transaction_attempted, "the write is attempted once"
+
+        assert log =~ "Could not record the outcome of job run #{job_run.job_run_identifier}"
+        assert %JobRun{status: "RUNNING"} = Repo.get!(JobRun, job_run.id)
+      end
+    end
+  end
+
+  describe "failure reasons" do
+    test "a long reason is cut to fit job_runs.reason", %{config: config} do
+      {:ok, job_run} =
+        JobEngine.run_a_job(config, enqueue(config, %{}, job: TestJobs.FailsWithLongReason))
+
+      reason = await_done(job_run).reason
+      assert String.length(reason) == 255
+      assert reason =~ ~r/^"é+$/u
+    end
+
+    test "a long schema validation message is cut to fit job_runs.reason", %{config: config} do
+      template =
+        Repo.insert!(%JobTemplate{
+          name: "Test job",
+          code: "TEST_#{System.unique_integer([:positive])}",
+          active: true,
+          display_order: 1,
+          job_module_name: Atom.to_string(TestJobs.Instant),
+          default_timeout_in_minutes: 5,
+          default_max_retries: 0,
+          job_context_schema: %{
+            "type" => "object",
+            "properties" => Map.new(1..40, &{"field_#{&1}", %{"type" => "integer"}})
+          }
+        })
+
+      context = Map.new(1..40, &{"field_#{&1}", "not an integer"})
+      {:ok, entry} = JobEngine.enqueue_job(config, template, context)
+
+      assert {:error, {:invalid_job_context, job_run}} = JobEngine.run_a_job(config, entry)
+
+      reason = Repo.get!(JobRun, job_run.id).reason
+      assert String.length(reason) == 255
+      assert reason =~ "Invalid job context"
+    end
+  end
+
   # A RUNNING job run for the entry, as run_a_job leaves it just before the launch.
   defp running_job_run(entry) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
