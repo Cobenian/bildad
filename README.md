@@ -100,6 +100,10 @@ config :bildad, run_details: true
 
 See `Bildad.Config` for every setting.
 
+With run details on, `Bildad.Introspect.run_info/2` shows what a running job is doing (its
+current function and stack, memory, mailbox length, reductions), on any node connected to
+the caller's.
+
 ## Architecture
 
 * a database that works with Ecto

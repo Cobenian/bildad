@@ -24,6 +24,11 @@ application that does not use them, apart from the notes under "Behaviour change
   job's process or the transaction that claims the job. Read with
   `Jobs.get_job_run_detail/2` and `Jobs.list_job_run_details/2`, or the new
   `JobRun.job_run_detail` association. `job_runs` is not altered.
+* **`Bildad.Introspect`** looks inside a running job: `info/1` on its own node, and
+  `remote_info/3` / `run_info/2` on another node that is already connected (never connecting
+  one, never creating an atom from a stored node name, never raising). Returns only
+  `current_function`, `current_stacktrace` (arities, no arguments), `memory`,
+  `message_queue_len`, `reductions`, `status` and `node`.
 
 Behaviour changes:
 
