@@ -67,7 +67,7 @@ defmodule Bildad.ProgressTest do
       capture_telemetry([:progress])
 
       state = %{
-        Bildad.RunState.new(Repo, %JobRun{
+        Bildad.RunState.new(JobConfig.new(Repo), %JobRun{
           id: 1,
           job_run_identifier: "x",
           job_template_id: 1,
@@ -83,12 +83,15 @@ defmodule Bildad.ProgressTest do
       assert_received {:telemetry, :progress, %{fraction: 1.0}, %{message: message}}
       assert String.length(message) == 255
 
+      assert :ok = Bildad.progress(0.5, "bad \0 bytes " <> <<0xFF>>)
+      assert_received {:telemetry, :progress, _, %{message: "bad  bytes "}}
+
       assert :ok = Bildad.progress(nil, nil)
       assert_received {:telemetry, :progress, measurements, %{fraction: nil, message: nil}}
       assert measurements == %{}
 
       assert :ok = Bildad.progress(-1, :not_a_string)
-      assert_received {:telemetry, :progress, %{fraction: 0.0}, %{message: ":not_a_string"}}
+      assert_received {:telemetry, :progress, %{fraction: +0.0}, %{message: ":not_a_string"}}
     after
       Process.delete(:"$bildad_job")
     end
@@ -243,6 +246,36 @@ defmodule Bildad.ProgressTest do
 
       send(worker, :finish)
       await_done(job_run)
+    end
+
+    test "keep the last progress of a job that ends before the next write",
+         %{config: config} do
+      put_bildad_env(:run_details, true)
+      put_bildad_env(:progress_interval_ms, 60_000)
+
+      {:ok, job_run} = JobEngine.run_a_job(config, enqueue(config, %{}, job: TestJobs.Progresses))
+      await_done(job_run)
+      # The writer handles the job's run_finished before this call.
+      Bildad.RunDetails.Writer.flush()
+
+      detail = Bildad.Job.Jobs.get_job_run_detail(config, job_run.id)
+      assert detail.progress == 1.0
+      assert detail.progress_message == "done"
+    end
+
+    test "honour a custom running status", %{config: config} do
+      put_bildad_env(:run_details, true)
+      config = %{config | job_run_status_running: "ACTIVE"}
+
+      job_run = Repo.insert!(%{running_job_run(enqueue(config)) | status: "ACTIVE"})
+      job_run = %{job_run | job_template: Repo.get!(JobTemplate, job_run.job_template_id)}
+
+      state = Bildad.RunState.new(config, job_run)
+      Bildad.RunDetails.Writer.progress(state, 0.25, "custom")
+      Bildad.RunDetails.Writer.flush()
+
+      assert %{progress: 0.25, progress_message: "custom"} =
+               Bildad.Job.Jobs.get_job_run_detail(config, job_run.id)
     end
 
     test "a missing table does not stop jobs", %{config: config} do

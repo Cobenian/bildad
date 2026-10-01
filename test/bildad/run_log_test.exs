@@ -3,6 +3,21 @@ defmodule Bildad.RunLogTest do
 
   alias Bildad.RunLog
 
+  defmodule LoggingRedactor do
+    @moduledoc false
+    require Logger
+
+    def redact(message, _level) do
+      Logger.warning("redacting a line")
+      message
+    end
+  end
+
+  defmodule DropAll do
+    @moduledoc false
+    def redact(_message, _level), do: :drop
+  end
+
   defmodule Redactor do
     @moduledoc false
     def redact("line 2", _level), do: :drop
@@ -113,6 +128,22 @@ defmodule Bildad.RunLogTest do
 
     assert "line [redacted]" in messages
     refute Enum.any?(messages, &(&1 in ["line 2", "line 3", "line 4"]))
+  end
+
+  test "a redaction hook that logs does not recurse", %{config: config} do
+    enable(enabled: true, redact: {LoggingRedactor, :redact, []})
+    job_run = run(config, TestJobs.LogsThenFails)
+
+    assert job_run.result == "FAILED"
+    assert %{lines: lines} = RunLog.get(config, job_run.id)
+    assert Enum.any?(lines, &(&1 =~ "line 1"))
+    refute Enum.any?(lines, &(&1 =~ "redacting a line"))
+  end
+
+  test "a run whose every line was dropped saves nothing", %{config: config} do
+    enable(enabled: true, redact: {DropAll, :redact, []})
+    job_run = run(config, TestJobs.LogsThenFails)
+    assert RunLog.get(config, job_run.id) == nil
   end
 
   test "with the run log off nothing is captured", %{config: config} do

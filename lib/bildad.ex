@@ -192,7 +192,13 @@ defmodule Bildad do
   defp normalize_fraction(f) when is_number(f), do: f |> max(0) |> min(1) |> Kernel./(1)
   defp normalize_fraction(_), do: nil
 
-  defp normalize_message(m) when is_binary(m), do: Bildad.Text.cut_chars(m, @max_message_length)
+  defp normalize_message(m) when is_binary(m) do
+    m
+    |> Bildad.Text.cut_bytes(@max_message_length * 4)
+    |> Bildad.Text.sanitize()
+    |> Bildad.Text.cut_chars(@max_message_length)
+  end
+
   defp normalize_message(nil), do: nil
   defp normalize_message(m), do: m |> to_binary() |> normalize_message()
 

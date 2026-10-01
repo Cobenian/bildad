@@ -4,7 +4,9 @@ defmodule Bildad.Text do
 
   @doc "The first `max` code points (database string columns count code points)."
   def cut_chars(text, max) when is_binary(text) do
-    text |> String.codepoints() |> Enum.take(max) |> Enum.join()
+    # A code point is at most 4 bytes: cut the bytes first so a huge text is not split
+    # into code points in full.
+    text |> cut_bytes(max * 4) |> String.codepoints() |> Enum.take(max) |> Enum.join()
   end
 
   @doc "At most `max` bytes, cut on a UTF-8 character boundary."
@@ -16,9 +18,13 @@ defmodule Bildad.Text do
 
   @doc "Valid UTF-8 without NUL bytes (which Postgres text columns reject)."
   def sanitize(text) when is_binary(text) do
-    text
-    |> String.replace_invalid()
-    |> String.replace(<<0>>, "")
+    if String.valid?(text) and not String.contains?(text, <<0>>) do
+      text
+    else
+      for chunk <- String.chunk(text, :valid), String.valid?(chunk), into: "" do
+        String.replace(chunk, <<0>>, "")
+      end
+    end
   end
 
   # Drops an incomplete UTF-8 character left at the end by a byte cut. Only the last three

@@ -12,19 +12,25 @@ defmodule Bildad.RunLog.Handler do
   @behaviour :logger_handler
 
   @buffer :"$bildad_run_log"
+  @busy :"$bildad_run_log_busy"
 
   @impl true
   def adding_handler(config), do: {:ok, config}
 
   @impl true
   def log(event, %{config: config}) do
-    case Process.get(@buffer) do
-      {lines, count, dropped} ->
+    # A redaction hook that logs would call this handler again from inside it: the busy flag
+    # makes that inner call return at once instead of recursing.
+    with {lines, count, dropped} <- Process.get(@buffer),
+         nil <- Process.put(@busy, true) do
+      try do
         Process.put(@buffer, append(lines, count, dropped, line(event, config), config))
-
-      _ ->
-        :ok
+      after
+        Process.delete(@busy)
+      end
     end
+
+    :ok
   catch
     _, _ -> :ok
   end
@@ -43,7 +49,14 @@ defmodule Bildad.RunLog.Handler do
     {:queue.in(line, lines), count, dropped + 1}
   end
 
-  defp line(%{level: level, msg: msg, meta: meta}, config) do
+  # Any failure to build the line drops it (and counts it as dropped).
+  defp line(event, config) do
+    build_line(event, config)
+  catch
+    _, _ -> :drop
+  end
+
+  defp build_line(%{level: level, msg: msg, meta: meta}, config) do
     limit = config.max_line_bytes * 4
 
     with message when is_binary(message) <- message(msg, meta, limit),
@@ -61,8 +74,13 @@ defmodule Bildad.RunLog.Handler do
     end
   end
 
+  defp message({:string, text}, _meta, limit) when is_binary(text) do
+    Bildad.Text.cut_bytes(text, limit)
+  end
+
+  # A long chardata is sliced before it is turned into one binary.
   defp message({:string, chardata}, _meta, limit) do
-    chardata |> IO.chardata_to_string() |> Bildad.Text.cut_bytes(limit)
+    chardata |> :string.slice(0, limit) |> IO.chardata_to_string() |> Bildad.Text.cut_bytes(limit)
   end
 
   defp message({:report, report}, meta, limit) do

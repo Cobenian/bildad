@@ -41,9 +41,15 @@ defmodule Bildad.Job.JobKiller do
       )
 
       case JobEngine.kill_a_job(job_config, job_run_to_kill) do
-        nil -> Logger.info("job run #{job_run_to_kill.id} is not running on this node")
-        {:ok, _} -> Logger.info("killed job run #{job_run_to_kill.id}")
-        other -> Logger.warning("could not kill job run #{job_run_to_kill.id}: #{inspect(other)}")
+        nil ->
+          Logger.info("job run #{job_run_to_kill.id} is not running on this node")
+
+        {:ok, _} ->
+          Logger.info("killed job run #{job_run_to_kill.id}")
+
+        # Only the shape of the error: its details can hold the run's data.
+        other ->
+          Logger.warning("could not kill job run #{job_run_to_kill.id}: #{error_tag(other)}")
       end
 
       Logger.debug("killed a job")
@@ -51,4 +57,8 @@ defmodule Bildad.Job.JobKiller do
 
     Logger.debug("all done!")
   end
+
+  defp error_tag({:error, %{__struct__: module}}), do: inspect(module)
+  defp error_tag({:error, reason}) when is_atom(reason), do: inspect(reason)
+  defp error_tag(_other), do: "error"
 end

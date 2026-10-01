@@ -11,11 +11,26 @@ defmodule Bildad.RunState do
 
   @key :"$bildad_job"
 
-  @enforce_keys [:identity, :repo, :throttle, :progress_interval_ms, :run_details?]
-  defstruct [:identity, :repo, :throttle, :progress_interval_ms, :run_details?, run_log?: false]
+  @enforce_keys [
+    :identity,
+    :repo,
+    :running_status,
+    :throttle,
+    :progress_interval_ms,
+    :run_details?
+  ]
+  defstruct [
+    :identity,
+    :repo,
+    :running_status,
+    :throttle,
+    :progress_interval_ms,
+    :run_details?,
+    run_log?: false
+  ]
 
   @doc "Builds the state for a job run whose template is preloaded."
-  def new(repo, %JobRun{} = job_run) do
+  def new(%Bildad.Job.JobConfig{} = job_config, %JobRun{} = job_run) do
     interval = Bildad.Config.progress_interval_ms()
     throttle = :atomics.new(1, signed: true)
     # The first update of a run is always sent.
@@ -31,7 +46,8 @@ defmodule Bildad.RunState do
         retry: job_run.retry,
         node: node()
       },
-      repo: repo,
+      repo: job_config.repo,
+      running_status: job_config.job_run_status_running,
       throttle: throttle,
       progress_interval_ms: interval,
       run_details?: Bildad.Config.run_details?(),
@@ -85,6 +101,9 @@ defmodule Bildad.RunState do
     last = :atomics.get(throttle, 1)
 
     cond do
+      interval == 0 ->
+        true
+
       force? ->
         :atomics.put(throttle, 1, now)
         true

@@ -10,7 +10,8 @@ defmodule Bildad.Application do
   This application starts automatically when Bildad is a runtime dependency of the host
   application (the default). A host that lists Bildad with `runtime: false` or under
   `included_applications` must start `{Registry, keys: :unique, name: Bildad.JobRegistry}`
-  (and, to use run details, `Bildad.RunDetails.Writer`) in its own supervision tree.
+  (and, to use run details, `Bildad.RunDetails.Writer`) in its own supervision tree, and
+  call `Bildad.RunLog.attach/0` to use the run log.
   """
 
   use Application

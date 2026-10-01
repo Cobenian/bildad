@@ -35,7 +35,7 @@ defmodule Bildad.RunDetails.Writer do
   def progress(%Bildad.RunState{run_details?: true} = state, fraction, message) do
     :ets.insert(
       @table,
-      {state.identity.job_run_id, state.repo, fraction, message, now()}
+      {state.identity.job_run_id, {state.repo, state.running_status}, fraction, message, now()}
     )
 
     :ok
@@ -44,6 +44,17 @@ defmodule Bildad.RunDetails.Writer do
   end
 
   def progress(_state, _fraction, _message), do: :ok
+
+  @doc """
+  Writes the run's pending progress at once, without the check that the run is still
+  running: called by the job process once its outcome is recorded, so the last update of a
+  job that ends before the next tick is not lost. Never fails.
+  """
+  def run_finished(%Bildad.RunState{run_details?: true} = state) do
+    GenServer.cast(__MODULE__, {:run_finished, state.identity.job_run_id})
+  end
+
+  def run_finished(_state), do: :ok
 
   @doc false
   # Writes pending progress now. For tests.
@@ -59,6 +70,19 @@ defmodule Bildad.RunDetails.Writer do
   @impl true
   def handle_cast({:run_started, repo, identity}, state) do
     {:noreply, attempt(state, fn -> insert_detail(repo, identity.job_run_id, identity.node) end)}
+  end
+
+  def handle_cast({:run_finished, job_run_id}, state) do
+    state =
+      case :ets.take(@table, job_run_id) do
+        [{^job_run_id, {repo, _running}, fraction, message, at}] ->
+          attempt(state, fn -> update_progress(repo, job_run_id, nil, fraction, message, at) end)
+
+        _ ->
+          state
+      end
+
+    {:noreply, state}
   end
 
   @impl true
@@ -77,8 +101,10 @@ defmodule Bildad.RunDetails.Writer do
   defp write_progress(state) do
     @table
     |> :ets.tab2list()
-    |> Enum.reduce(state, fn {job_run_id, repo, fraction, message, at} = row, state ->
-      state = attempt(state, fn -> update_progress(repo, job_run_id, fraction, message, at) end)
+    |> Enum.reduce(state, fn {job_run_id, {repo, running}, fraction, message, at} = row, state ->
+      state =
+        attempt(state, fn -> update_progress(repo, job_run_id, running, fraction, message, at) end)
+
       # Only this exact row: a newer update stored meanwhile is written on the next tick.
       :ets.delete_object(@table, row)
       state
@@ -98,25 +124,30 @@ defmodule Bildad.RunDetails.Writer do
     )
   end
 
-  # Only while the run is still RUNNING, so a late write never touches a finished run.
-  defp update_progress(repo, job_run_id, fraction, message, at) do
+  # With a running status, only while the run still has it, so a late tick never touches a
+  # finished run. Without (`nil`, when the job itself says it has finished), unconditionally.
+  defp update_progress(repo, job_run_id, running, fraction, message, at) do
     fields = [progress: fraction, progress_message: message, progress_at: at]
 
     {count, _} =
-      from(d in JobRunDetail,
-        join: r in JobRun,
-        on: r.id == d.job_run_id,
-        where: d.job_run_id == ^job_run_id and r.status == "RUNNING"
-      )
+      from(d in JobRunDetail, join: r in JobRun, on: r.id == d.job_run_id)
+      |> where([d], d.job_run_id == ^job_run_id)
+      |> still_running(running)
       |> repo.update_all(set: [updated_at: at] ++ fields)
 
     # No row yet (it could not be created when the run started): create it with the
-    # progress, if the run is still running.
+    # progress, if the run qualifies.
     if count == 0 and
-         repo.exists?(from(r in JobRun, where: r.id == ^job_run_id and r.status == "RUNNING")) do
+         repo.exists?(from(r in JobRun, where: r.id == ^job_run_id) |> run_still_running(running)) do
       insert_detail(repo, job_run_id, node(), fields)
     end
   end
+
+  defp still_running(query, nil), do: query
+  defp still_running(query, running), do: where(query, [_d, r], r.status == ^running)
+
+  defp run_still_running(query, nil), do: query
+  defp run_still_running(query, running), do: where(query, [r], r.status == ^running)
 
   defp attempt(state, fun) do
     fun.()

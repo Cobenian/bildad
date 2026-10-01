@@ -69,8 +69,23 @@ defmodule Bildad.Job.JobEngine do
       try do
         RunLog.prune(job_config)
       rescue
-        e -> Logger.warning("Could not prune saved run logs: #{Exception.message(e)}")
+        e -> log_prune_error(e)
       end
+    end
+  end
+
+  # At most once a minute per node, so a missing table does not log on every engine run.
+  defp log_prune_error(e) do
+    now = System.monotonic_time(:millisecond)
+    last = :persistent_term.get({__MODULE__, :prune_error_logged_at}, nil)
+
+    if last == nil or now - last >= 60_000 do
+      :persistent_term.put({__MODULE__, :prune_error_logged_at}, now)
+
+      Logger.error(
+        "Could not prune saved run logs (is the job_run_details migration applied?): " <>
+          String.slice(Exception.message(e), 0, 500)
+      )
     end
   end
 
@@ -307,7 +322,10 @@ defmodule Bildad.Job.JobEngine do
   # here, so no write can fail on the reason's length. The column limit counts code points,
   # not graphemes (one grapheme can be several code points), so code points are counted.
   defp truncate_reason(reason) when is_binary(reason) do
-    Bildad.Text.cut_chars(reason, @reason_max_length)
+    reason
+    |> Bildad.Text.cut_bytes(@reason_max_length * 4)
+    |> Bildad.Text.sanitize()
+    |> Bildad.Text.cut_chars(@reason_max_length)
   end
 
   # remove a job from the queue
@@ -610,7 +628,7 @@ defmodule Bildad.Job.JobEngine do
     process_name = job_run.job_process_name
     process_module = job_run.job_template.job_module_name
     process_module_atom = String.to_atom(process_module)
-    run_state = RunState.new(job_config.repo, job_run)
+    run_state = RunState.new(job_config, job_run)
 
     # The process acknowledges its registration through an alias, so an acknowledgement
     # that arrives after this function has given up is dropped instead of being left in the
@@ -717,6 +735,7 @@ defmodule Bildad.Job.JobEngine do
       end
 
     record_outcome(job_config, job_run, outcome)
+    Writer.run_finished(run_state)
     RunLog.finish_capture(run_state, outcome != :succeeded)
     emit_end(run_state, start_time, outcome, ending)
 

@@ -227,12 +227,23 @@ defmodule Bildad.RunLog do
       _ -> nil
     end
   rescue
-    _ -> nil
+    # Reading one key of another process's dictionary needs OTP 26.2; before that, read it
+    # all (only at a kill or a stop, so rarely).
+    ArgumentError -> read_whole_dictionary(pid)
+  end
+
+  defp read_whole_dictionary(pid) do
+    with {:dictionary, dictionary} <- Process.info(pid, :dictionary),
+         {_, {_, _, _} = buffer} <- List.keyfind(dictionary, Handler.buffer_key(), 0) do
+      buffer
+    else
+      _ -> nil
+    end
   end
 
   @doc false
-  # Nothing to save: no line was logged (or the handler is not attached).
-  def save(_repo, _job_run_id, {_lines, 0, 0}), do: :ok
+  # Nothing to save: no line was kept (none logged, all dropped, or no handler attached).
+  def save(_repo, _job_run_id, {_lines, 0, _dropped}), do: :ok
 
   def save(repo, job_run_id, {lines, count, dropped}) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)

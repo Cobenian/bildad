@@ -15,7 +15,7 @@ defmodule Mix.Tasks.Bildad.Gen.RunDetailsMigration do
       config :bildad, run_details: true
 
   Run the migration before enabling them. Until it has run, enabling them makes Bildad log
-  an error every minute; jobs are not affected.
+  errors (at most one a minute from each source on each node); jobs are not affected.
 
   Does nothing if a migration named `*_add_bildad_job_run_details.exs` already exists.
   """
