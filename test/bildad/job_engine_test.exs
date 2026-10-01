@@ -1,19 +1,5 @@
 defmodule Bildad.Job.JobEngineTest do
-  # Not async: the jobs run in their own processes against a shared database.
-  use ExUnit.Case, async: false
-
-  import Ecto.Query
-
-  alias Bildad.Job.{JobConfig, JobEngine, JobQueueEntry, JobRun, JobTemplate}
-  alias Bildad.TestJobs
-  alias Bildad.TestRepo, as: Repo
-
-  setup do
-    # Deleting the templates cascades to their queue entries and job runs.
-    Repo.delete_all(JobTemplate)
-    Process.register(self(), :bildad_test)
-    %{config: JobConfig.new(Repo)}
-  end
+  use Bildad.JobCase, async: false
 
   describe "claiming a queue entry" do
     test "concurrent run_a_job calls on one entry run it exactly once", %{config: config} do
@@ -281,80 +267,10 @@ defmodule Bildad.Job.JobEngineTest do
     end
   end
 
-  # A RUNNING job run for the entry, as run_a_job leaves it just before the launch.
-  defp running_job_run(entry) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
-
-    %JobRun{
-      job_queue_entry_id: entry.id,
-      job_run_identifier: entry.job_run_identifier,
-      job_template_id: entry.job_template_id,
-      retry: 0,
-      job_process_name: Ecto.UUID.generate(),
-      status: "RUNNING",
-      started_at: now,
-      timeout_at: NaiveDateTime.add(now, 5, :minute),
-      expires_at: NaiveDateTime.add(now, 2, :day),
-      job_context: %{}
-    }
-  end
-
   defp run_instant_jobs(config, count) do
     for _ <- 1..count do
       {:ok, job_run} = JobEngine.run_a_job(config, enqueue(config, %{}, job: TestJobs.Instant))
       await_done(job_run)
-    end
-  end
-
-  defp enqueue(config, context \\ %{}, opts \\ []) do
-    template =
-      Repo.insert!(%JobTemplate{
-        name: "Test job",
-        code: "TEST_#{System.unique_integer([:positive])}",
-        active: true,
-        display_order: 1,
-        job_module_name: Atom.to_string(Keyword.get(opts, :job, TestJobs.Blocking)),
-        default_timeout_in_minutes: 5,
-        default_max_retries: Keyword.get(opts, :max_retries, 0),
-        job_context_schema: %{
-          "type" => "object",
-          "properties" => %{"n" => %{"type" => "integer"}}
-        }
-      })
-
-    {:ok, entry} = JobEngine.enqueue_job(config, template, context)
-    entry
-  end
-
-  defp runs_for(entry) do
-    Repo.all(from(r in JobRun, where: r.job_run_identifier == ^entry.job_run_identifier))
-  end
-
-  # Waits for the run to be finished and for its process to be gone, so nothing from this
-  # test is still using the database when the next one starts.
-  defp await_done(job_run, tries \\ 250)
-
-  defp await_done(job_run, 0), do: flunk("job run #{job_run.id} did not finish")
-
-  defp await_done(job_run, tries) do
-    case Repo.get!(JobRun, job_run.id) do
-      %JobRun{status: "DONE"} = done ->
-        if pid = JobEngine.find_elixir_process(job_run), do: await_dead(pid)
-        done
-
-      _ ->
-        Process.sleep(20)
-        await_done(job_run, tries - 1)
-    end
-  end
-
-  defp await_dead(pid) do
-    ref = Process.monitor(pid)
-
-    receive do
-      {:DOWN, ^ref, :process, ^pid, _} -> :ok
-    after
-      5_000 -> flunk("process #{inspect(pid)} did not exit")
     end
   end
 end

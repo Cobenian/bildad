@@ -63,6 +63,43 @@ You must also create Job Templates for the jobs that you plan on running. They m
 contain the string version of the Elixir module to run and a JSON schema definition
 so that the job context can be validated before a job is run.
 
+## Progress and telemetry
+
+A job can report its progress, from its own process or a task it starts:
+
+```elixir
+def run_job(%{"ids" => ids}) do
+  total = length(ids)
+
+  for {id, n} <- Enum.with_index(ids, 1) do
+    process(id)
+    Bildad.progress(n / total, "processed #{n} of #{total}")
+  end
+
+  {:ok, total}
+end
+```
+
+Progress, and the start and end of every job, are `:telemetry` events (see
+`Bildad.Telemetry`). With `phoenix_pubsub` in your dependencies, `Bildad.PubSub.attach/2`
+broadcasts them.
+
+## Run details (optional)
+
+To record the node that ran each job and its latest progress in the database (readable
+from any node, connected or not), generate and run the migration, then enable it:
+
+```bash
+mix bildad.gen.run_details_migration
+mix ecto.migrate
+```
+
+```elixir
+config :bildad, run_details: true
+```
+
+See `Bildad.Config` for every setting.
+
 ## Architecture
 
 * a database that works with Ecto

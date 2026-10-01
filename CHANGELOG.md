@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+Progress reporting, job telemetry and optional run details. Nothing changes for an
+application that does not use them, apart from the notes under "Behaviour changes".
+
+* **`Bildad.progress(fraction, message)`** reports the progress of a running job, and
+  **`Bildad.stream(chunk)`** streams output, from the job's process or a task it starts,
+  without passing anything around. **`Bildad.current_job/0`** returns the job's identity
+  (run id, identifier, template, module, retry, node; never the context). Progress events are
+  throttled per run (`config :bildad, progress_interval_ms: 1_000`); updates inside the
+  interval are dropped, a fraction of 1 always passes. `run_job/1` is unchanged.
+* **Telemetry events** `[:bildad, :job, :start | :stop | :exception | :progress | :stream]`
+  from running jobs, and `[:bildad, :job, :killed | :expired | :stopped]` from
+  `kill_a_job/2`, `expire_a_job/2` and `stop_job_in_queue/2`. See `Bildad.Telemetry`.
+  Adds a dependency on `:telemetry`.
+* **`Bildad.PubSub`** broadcasts those events over `Phoenix.PubSub` when `phoenix_pubsub`
+  (a new optional dependency) is present. Error terms are left out unless asked for.
+* **Run details (optional).** `mix bildad.gen.run_details_migration` writes a migration for
+  a new `job_run_details` table; with `config :bildad, run_details: true` Bildad records the
+  node that ran each job and its latest progress there (every
+  `progress_persist_interval_ms`, default 5000), from a separate process, never inside the
+  job's process or the transaction that claims the job. Read with
+  `Jobs.get_job_run_detail/2` and `Jobs.list_job_run_details/2`, or the new
+  `JobRun.job_run_detail` association. `job_runs` is not altered.
+
+Behaviour changes:
+
+* The launch log line lists the job context's keys instead of `inspect`ing the whole context,
+  and the `JobKiller` logs a run's id and identifier instead of the whole run (both included
+  the context, which can hold personal data).
+* A job process's `Bildad.JobRegistry` value is now Bildad's run state instead of `nil`.
+* `Bildad.Application` also starts `Bildad.RunDetails.Writer`, which stays idle unless run
+  details are enabled. A host that starts Bildad's processes itself (`runtime: false`) must
+  start it to use run details.
+
+Fixes:
+
 * **A job that exits or throws ends its run as FAILED.** The job process caught exceptions
   only; `exit/1` (a `GenServer.call` timeout, say) or `throw/1` ended the process before the
   run was finished, and the run and its entry stayed `RUNNING` until the run expired. Both

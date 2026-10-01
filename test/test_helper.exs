@@ -22,4 +22,11 @@ Ecto.Migrator.up(Bildad.TestRepo, 20_241_115_000_000, Bildad.Repo.Migrations.Add
   log: false
 )
 
+# The optional job_run_details table, as `mix bildad.gen.run_details_migration` writes it.
+Code.require_file("priv/templates/run_details_migration.exs.eex")
+
+Ecto.Migrator.up(Bildad.TestRepo, 20_241_115_000_001, Bildad.Repo.Migrations.AddJobRunDetails,
+  log: false
+)
+
 ExUnit.start(capture_log: true)

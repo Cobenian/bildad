@@ -73,4 +73,56 @@ defmodule Bildad.TestJobs do
       end
     end
   end
+
+  defmodule Progresses do
+    @moduledoc false
+    # Reports progress from its own process and from a task, then succeeds.
+    def run_job(_job_context) do
+      send(:bildad_test, {:current_job, Bildad.current_job()})
+
+      for {fraction, message} <- [{0.1, "a"}, {0.2, "b"}, {0.3, "c"}] do
+        :ok = Bildad.progress(fraction, message)
+      end
+
+      Task.async(fn ->
+        send(:bildad_test, {:task_current_job, Bildad.current_job()})
+        Bildad.progress(0.5, "from a task")
+      end)
+      |> Task.await()
+
+      :ok = Bildad.progress(1, "done")
+      {:ok, :done}
+    end
+  end
+
+  defmodule ProgressesThenWaits do
+    @moduledoc false
+    # Reports progress, then waits until the test sends :finish.
+    def run_job(_job_context) do
+      :ok = Bildad.progress(0.4, "scoring")
+      send(:bildad_test, {:started, self()})
+
+      receive do
+        :finish -> {:ok, :finished}
+      end
+    end
+  end
+
+  defmodule Streams do
+    @moduledoc false
+    def run_job(_job_context) do
+      :ok = Bildad.stream(["hel", "lo"])
+      {:ok, :done}
+    end
+  end
+
+  defmodule Raises do
+    @moduledoc false
+    def run_job(_job_context), do: raise("boom")
+  end
+
+  defmodule ReturnsError do
+    @moduledoc false
+    def run_job(_job_context), do: {:error, :nope}
+  end
 end

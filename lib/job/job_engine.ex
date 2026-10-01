@@ -11,6 +11,8 @@ defmodule Bildad.Job.JobEngine do
   alias Bildad.Job.JobRun
   alias Bildad.Job.JobTemplate
   alias Bildad.Job.JobConfig
+  alias Bildad.RunDetails.Writer
+  alias Bildad.RunState
 
   alias ExJsonSchema.Schema
   alias ExJsonSchema.Validator
@@ -290,7 +292,7 @@ defmodule Bildad.Job.JobEngine do
   # here, so no write can fail on the reason's length. The column limit counts code points,
   # not graphemes (one grapheme can be several code points), so code points are counted.
   defp truncate_reason(reason) when is_binary(reason) do
-    reason |> String.codepoints() |> Enum.take(@reason_max_length) |> Enum.join()
+    Bildad.Text.cut_chars(reason, @reason_max_length)
   end
 
   # remove a job from the queue
@@ -339,6 +341,10 @@ defmodule Bildad.Job.JobEngine do
           # the job is not running
           nil
       end
+    end)
+    |> tap(fn
+      {:ok, %JobRun{} = job_run} -> Bildad.Telemetry.run_event(:stopped, job_run)
+      _ -> :ok
     end)
   end
 
@@ -394,6 +400,10 @@ defmodule Bildad.Job.JobEngine do
 
           job_run
         end)
+        |> tap(fn
+          {:ok, %JobRun{} = job_run} -> Bildad.Telemetry.run_event(:killed, job_run)
+          _ -> :ok
+        end)
     end
   end
 
@@ -433,6 +443,10 @@ defmodule Bildad.Job.JobEngine do
       end
 
       job_run
+    end)
+    |> tap(fn
+      {:ok, %JobRun{} = job_run} -> Bildad.Telemetry.run_event(:expired, job_run)
+      _ -> :ok
     end)
   end
 
@@ -575,6 +589,7 @@ defmodule Bildad.Job.JobEngine do
     process_name = job_run.job_process_name
     process_module = job_run.job_template.job_module_name
     process_module_atom = String.to_atom(process_module)
+    run_state = RunState.new(job_config.repo, job_run)
 
     # The process acknowledges its registration through an alias, so an acknowledgement
     # that arrives after this function has given up is dropped instead of being left in the
@@ -583,56 +598,9 @@ defmodule Bildad.Job.JobEngine do
 
     {pid, monitor} =
       spawn_monitor(fn ->
-        {:ok, _owner} = Registry.register(Bildad.JobRegistry, process_name, nil)
+        {:ok, _owner} = Registry.register(Bildad.JobRegistry, process_name, run_state)
         send(registered, {registered, :registered})
-
-        Logger.info("running job in process #{inspect(self())}")
-
-        outcome =
-          try do
-            Logger.info(
-              "running job process #{process_module_atom} for context: #{inspect(job_run.job_context)}"
-            )
-
-            apply(process_module_atom, :run_job, [job_run.job_context])
-            |> case do
-              {:ok, _} ->
-                :succeeded
-
-              {:error, e} ->
-                Logger.error("Error running job: #{inspect(e)}")
-
-                case Process.info(self(), :current_stacktrace) do
-                  {:current_stacktrace, stacktrace} ->
-                    Logger.error(Exception.format_stacktrace(stacktrace))
-
-                  _ ->
-                    Logger.error("(stacktrace unavailable)")
-                end
-
-                {:failed, e}
-            end
-          rescue
-            e ->
-              Logger.error("Error running job: #{inspect(e)}")
-              Logger.error(Exception.format_stacktrace(__STACKTRACE__))
-              {:failed, e}
-          catch
-            kind, reason ->
-              Logger.error("Job ended with #{kind}: #{inspect(reason, limit: 50)}")
-              Logger.error(Exception.format_stacktrace(__STACKTRACE__))
-              {:failed, {kind, reason}}
-          end
-
-        record_outcome(job_config, job_run, outcome)
-
-        # After an exit or a throw the process still ends abnormally, as it did before the
-        # run was recorded, so processes the job linked to (a `Task.async`, say) stop with it.
-        case outcome do
-          {:failed, {:exit, reason}} -> exit(reason)
-          {:failed, {:throw, value}} -> exit({:nocatch, value})
-          _ -> :ok
-        end
+        run_job_process(job_config, job_run, run_state, process_module_atom)
       end)
 
     # The acknowledgement is sent before the job starts, so it arrives before the :DOWN of a
@@ -669,6 +637,106 @@ defmodule Bildad.Job.JobEngine do
       0 -> result
     end
   end
+
+  # The body of a job process, once it is registered.
+  defp run_job_process(job_config, job_run, run_state, process_module_atom) do
+    RunState.put(run_state)
+    Writer.run_started(run_state)
+
+    Logger.info("running job in process #{inspect(self())}")
+
+    # The context's keys only: its values can be personal data.
+    Logger.info(
+      "running job process #{process_module_atom} for context with keys: " <>
+        context_keys(job_run.job_context)
+    )
+
+    start_time = System.monotonic_time()
+
+    :telemetry.execute(
+      [:bildad, :job, :start],
+      %{system_time: System.system_time(), monotonic_time: start_time},
+      run_state.identity
+    )
+
+    # `ending` says how run_job/1 ended: it returned, or it raised, exited or threw.
+    {outcome, ending} =
+      try do
+        apply(process_module_atom, :run_job, [job_run.job_context])
+        |> case do
+          {:ok, _} ->
+            {:succeeded, :returned}
+
+          {:error, e} ->
+            Logger.error("Error running job: #{inspect(e)}")
+
+            case Process.info(self(), :current_stacktrace) do
+              {:current_stacktrace, stacktrace} ->
+                Logger.error(Exception.format_stacktrace(stacktrace))
+
+              _ ->
+                Logger.error("(stacktrace unavailable)")
+            end
+
+            {{:failed, e}, :returned}
+        end
+      rescue
+        e ->
+          Logger.error("Error running job: #{inspect(e)}")
+          Logger.error(Exception.format_stacktrace(__STACKTRACE__))
+          {{:failed, e}, {:error, e, __STACKTRACE__}}
+      catch
+        kind, reason ->
+          Logger.error("Job ended with #{kind}: #{inspect(reason, limit: 50)}")
+          Logger.error(Exception.format_stacktrace(__STACKTRACE__))
+          {{:failed, {kind, reason}}, {kind, reason, __STACKTRACE__}}
+      end
+
+    record_outcome(job_config, job_run, outcome)
+    emit_end(run_state, start_time, outcome, ending)
+
+    # After an exit or a throw the process still ends abnormally, as it did before the
+    # run was recorded, so processes the job linked to (a `Task.async`, say) stop with it.
+    case ending do
+      {:exit, reason, _stacktrace} -> exit(reason)
+      {:throw, value, _stacktrace} -> exit({:nocatch, value})
+      _ -> :ok
+    end
+  end
+
+  defp emit_end(run_state, start_time, outcome, ending) do
+    stop_time = System.monotonic_time()
+    measurements = %{duration: stop_time - start_time, monotonic_time: stop_time}
+
+    case {outcome, ending} do
+      {_, {kind, reason, stacktrace}} ->
+        :telemetry.execute(
+          [:bildad, :job, :exception],
+          measurements,
+          Map.merge(run_state.identity, %{kind: kind, reason: reason, stacktrace: stacktrace})
+        )
+
+      {:succeeded, :returned} ->
+        :telemetry.execute(
+          [:bildad, :job, :stop],
+          measurements,
+          Map.merge(run_state.identity, %{result: :succeeded, error: nil})
+        )
+
+      {{:failed, error}, :returned} ->
+        :telemetry.execute(
+          [:bildad, :job, :stop],
+          measurements,
+          Map.merge(run_state.identity, %{result: :failed, error: error})
+        )
+    end
+  end
+
+  defp context_keys(context) when is_map(context) do
+    context |> Map.keys() |> Enum.map(&to_string/1) |> Enum.sort() |> inspect()
+  end
+
+  defp context_keys(_context), do: "(not a map)"
 
   # Records how the job ended, with one attempt at the database write. If that fails (the
   # database is unavailable, say) it is only logged: the process ends and the run stays

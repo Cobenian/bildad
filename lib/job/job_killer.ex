@@ -35,9 +35,17 @@ defmodule Bildad.Job.JobKiller do
 
     job_runs_to_kill
     |> Enum.map(fn job_run_to_kill ->
-      Logger.info("time to kill a job #{inspect(job_run_to_kill, pretty: true)}")
-      r = JobEngine.kill_a_job(job_config, job_run_to_kill)
-      Logger.info("killed a job: #{inspect(r)}")
+      # Not the whole run: its job context can hold personal data.
+      Logger.info(
+        "time to kill a job: run #{job_run_to_kill.id} (#{job_run_to_kill.job_run_identifier})"
+      )
+
+      case JobEngine.kill_a_job(job_config, job_run_to_kill) do
+        nil -> Logger.info("job run #{job_run_to_kill.id} is not running on this node")
+        {:ok, _} -> Logger.info("killed job run #{job_run_to_kill.id}")
+        other -> Logger.warning("could not kill job run #{job_run_to_kill.id}: #{inspect(other)}")
+      end
+
       Logger.debug("killed a job")
     end)
 
