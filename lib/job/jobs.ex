@@ -6,6 +6,7 @@ defmodule Bildad.Job.Jobs do
   alias Bildad.Job.JobTemplates
   alias Bildad.Job.JobQueueEntries
   alias Bildad.Job.JobRuns
+  alias Bildad.Job.JobRunDetails
 
   defdelegate list_job_templates(job_config), to: JobTemplates
   defdelegate list_job_templates(job_config, page, limit \\ nil), to: JobTemplates
@@ -29,6 +30,9 @@ defmodule Bildad.Job.Jobs do
   defdelegate list_all_job_runs(job_config, page, limit \\ nil), to: JobRuns
   defdelegate list_running_job_runs(job_config), to: JobRuns
   defdelegate get_number_of_job_runs(job_config), to: JobRuns
+
+  defdelegate get_job_run_detail(job_config, job_run_id), to: JobRunDetails
+  defdelegate list_job_run_details(job_config, job_run_ids), to: JobRunDetails
 
   defdelegate get_job_queue_entry_for_identifier(job_config, job_run_identifier),
     to: JobQueueEntries

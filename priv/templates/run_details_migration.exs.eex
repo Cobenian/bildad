@@ -1,0 +1,32 @@
+defmodule Bildad.Repo.Migrations.AddJobRunDetails do
+  use Ecto.Migration
+
+  # Optional details of job runs (node, latest progress, the saved log of a failed run),
+  # written only when `config :bildad, run_details: true` is set.
+
+  def up do
+    # MySQL's TEXT holds 64 KB, less than a saved log can be; Postgres's text has no limit.
+    log_tail_type = if repo().__adapter__() == Ecto.Adapters.MyXQL, do: :mediumtext, else: :text
+
+    create table("job_run_details") do
+      add :job_run_id, references("job_runs", on_delete: :delete_all), null: false
+      add :node, :string
+      add :progress, :float
+      add :progress_message, :string
+      add :progress_at, :naive_datetime
+      add :log_tail, log_tail_type
+      add :log_tail_at, :naive_datetime
+      add :log_tail_lines, :integer
+      add :log_tail_dropped, :integer
+
+      timestamps()
+    end
+
+    create unique_index("job_run_details", [:job_run_id])
+    create index("job_run_details", [:log_tail_at])
+  end
+
+  def down do
+    drop table("job_run_details")
+  end
+end
