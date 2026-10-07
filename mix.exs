@@ -4,7 +4,7 @@ defmodule Bildad.MixProject do
   def project do
     [
       app: :bildad,
-      version: "0.1.13",
+      version: "0.2.0",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -38,6 +38,8 @@ defmodule Bildad.MixProject do
       {:ex_json_schema, "~> 0.11.2"},
       {:phoenix_ecto, "~> 4.6"},
       {:ecto_sql, "~> 3.12"},
+      {:telemetry, "~> 1.0"},
+      {:phoenix_pubsub, "~> 2.1", optional: true},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:myxql, "~> 0.7", only: :test},
       {:jason, "~> 1.4", only: :test}

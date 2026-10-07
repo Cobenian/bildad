@@ -95,6 +95,13 @@ defmodule Mix.Tasks.Bildad.Install do
     """)
 
     IO.puts("")
+
+    IO.puts(
+      "Optional: to record each run's node and progress and keep the log of failed runs, " <>
+        "run `mix bildad.gen.run_details_migration` (see Bildad.Config)."
+    )
+
+    IO.puts("")
   end
 
   defp get_template_file_path(filename) do

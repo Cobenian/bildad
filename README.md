@@ -31,7 +31,7 @@ by adding `bildad` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:bildad, "~> 0.1.0"}
+    {:bildad, "~> 0.2.0"}
   ]
 end
 ```
@@ -62,6 +62,52 @@ Be sure to replace `MyApp.Repo` with the module of your repository.
 You must also create Job Templates for the jobs that you plan on running. They must 
 contain the string version of the Elixir module to run and a JSON schema definition
 so that the job context can be validated before a job is run.
+
+## Progress and telemetry
+
+A job can report its progress, from its own process or a task it starts:
+
+```elixir
+def run_job(%{"ids" => ids}) do
+  total = length(ids)
+
+  for {id, n} <- Enum.with_index(ids, 1) do
+    process(id)
+    Bildad.progress(n / total, "processed #{n} of #{total}")
+  end
+
+  {:ok, total}
+end
+```
+
+Progress, and the start and end of every job, are `:telemetry` events (see
+`Bildad.Telemetry`). With `phoenix_pubsub` in your dependencies, `Bildad.PubSub.attach/2`
+broadcasts them.
+
+## Run details (optional)
+
+To record the node that ran each job and its latest progress in the database (readable
+from any node, connected or not), generate and run the migration, then enable it:
+
+```bash
+mix bildad.gen.run_details_migration
+mix ecto.migrate
+```
+
+```elixir
+config :bildad, run_details: true
+```
+
+See `Bildad.Config` for every setting.
+
+With run details on, `config :bildad, run_log: [enabled: true]` keeps the last log lines of
+each running job and saves them when the job fails or is killed (see `Bildad.RunLog` for
+what is kept, the redaction hook, the limits and retention). The lines can hold whatever
+your jobs log, including personal data: show them only to people allowed to see job logs.
+
+With run details on, `Bildad.Introspect.run_info/2` shows what a running job is doing (its
+current function and stack, memory, mailbox length, reductions), on any node connected to
+the caller's.
 
 ## Architecture
 

@@ -8,6 +8,7 @@ defmodule Bildad.Job.JobRun do
 
   alias Bildad.Job.JobTemplate
   alias Bildad.Job.JobQueueEntry
+  alias Bildad.Job.JobRunDetail
 
   schema "job_runs" do
     field(:job_run_identifier, :string)
@@ -27,6 +28,9 @@ defmodule Bildad.Job.JobRun do
 
     belongs_to(:job_template, JobTemplate)
     belongs_to(:job_queue_entry, JobQueueEntry)
+
+    # Only present when run details are enabled; see `Bildad.Config`.
+    has_one(:job_run_detail, JobRunDetail)
 
     timestamps()
   end
