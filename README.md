@@ -31,7 +31,7 @@ by adding `bildad` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:bildad, "~> 0.1.0"}
+    {:bildad, "~> 0.2.0"}
   ]
 end
 ```

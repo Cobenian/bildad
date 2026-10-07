@@ -1,9 +1,26 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 (2026-10-07)
 
 Progress reporting, job telemetry and optional run details. Nothing changes for an
-application that does not use them, apart from the notes under "Behaviour changes".
+application that does not use them, apart from the notes under "Upgrading: breaking and
+behaviour changes".
+
+**Upgrading: breaking and behaviour changes.** Read these before upgrading from 0.1.x.
+
+* A job that calls `exit(:normal)` now ends its run as FAILED (it used to stay `RUNNING`
+  until the run expired). Any other `exit/1` or `throw/1` is also recorded as FAILED.
+* The launch log line lists only the job context's keys, not their values.
+* A job process's `Bildad.JobRegistry` value is now a map of Bildad's run state instead of
+  `nil`.
+* New required dependency: `:telemetry`.
+* New optional dependency: `phoenix_pubsub` (only needed for `Bildad.PubSub`).
+* `Bildad.Application` starts a new process, `Bildad.RunDetails.Writer`, always. It stays
+  idle unless run details are enabled. A host that starts Bildad's processes itself
+  (`runtime: false`) must start it to use run details.
+
+The test suite runs on MySQL. PostgreSQL support in the new `job_run_details` migration
+template has been reviewed but is not tested in CI.
 
 * **`Bildad.progress(fraction, message)`** reports the progress of a running job, and
   **`Bildad.stream(chunk)`** streams output, from the job's process or a task it starts,
@@ -38,7 +55,7 @@ application that does not use them, apart from the notes under "Behaviour change
   `retention_days` (default 14) by the job engine. Enable with
   `config :bildad, run_details: true, run_log: [enabled: true]`.
 
-Behaviour changes:
+Behaviour changes (details):
 
 * The launch log line lists the job context's keys instead of `inspect`ing the whole context,
   and the `JobKiller` logs a run's id and identifier instead of the whole run (both included

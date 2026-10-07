@@ -1,6 +1,6 @@
 # Plan: run observability
 
-> **Status:** In Progress
+> **Status:** Done
 > **Roadmap:** [roadmap.md](roadmap.md)
 
 Revised after a five-reviewer design review (concurrency, API design, database, security
@@ -54,7 +54,7 @@ config :bildad,
   written once by `record_outcome/3`; a failed write is logged and the run left to expiry.
   After an exit or throw the process re-exits with the same reason.
 * Every failure reason is cut to 255 code points in one private helper.
-* Recommended to release on its own as 0.1.14 (no new dependency, no config, no table).
+* Released with phases 1 to 3 as 0.2.0 (it needs no new dependency, config or table).
 
 ## P1: live progress (done)
 

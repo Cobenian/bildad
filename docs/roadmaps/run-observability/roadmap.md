@@ -1,6 +1,6 @@
 # Roadmap: run observability
 
-> **Status:** In Progress
+> **Status:** Done
 
 Bildad records *that* a job ran, when, for how long and whether it failed. It cannot say
 what a running job is doing now, look inside a running job, or keep the log lines that
@@ -13,17 +13,16 @@ The detailed design is in [`plan.md`](plan.md).
 ## Phases
 
 Each phase is independently testable and lands as one or more commits on the same branch.
-Phases 1 to 3 are released together as 0.2.0; phase 0 is a patch that can be released on
-its own (0.1.14) if wanted.
+All four phases are done and are released together as 0.2.0.
 
-| Phase | Delivers | Needs a database change | Opt-in |
-|-------|----------|-------------------------|--------|
-| P0 | Every run ends with a recorded outcome; every failure reason fits its column | No | No (bug fix) |
-| P1 | Live progress: `Bildad.progress/2`, `Bildad.stream/1`, telemetry events, throttling, optional PubSub adapter, optional persisted progress | Optional (`job_run_details`) | Yes |
-| P2 | Live introspection: node recorded per run, `Bildad.Introspect` with a fixed whitelist | Optional (`job_run_details`) | Yes |
-| P3 | Run log retention: the last ~200 log lines of a failed, killed or stopped run | Optional (`job_run_details`) | Yes |
+| Phase | Delivers | Needs a database change | Opt-in | Status |
+|-------|----------|-------------------------|--------|--------|
+| P0 | Every run ends with a recorded outcome; every failure reason fits its column | No | No (bug fix) | Done |
+| P1 | Live progress: `Bildad.progress/2`, `Bildad.stream/1`, telemetry events, throttling, optional PubSub adapter, optional persisted progress | Optional (`job_run_details`) | Yes | Done |
+| P2 | Live introspection: node recorded per run, `Bildad.Introspect` with a fixed whitelist | Optional (`job_run_details`) | Yes | Done |
+| P3 | Run log retention: the last ~200 log lines of a failed, killed or stopped run | Optional (`job_run_details`) | Yes | Done |
 
-### P0: every run ends with an outcome
+### P0: every run ends with an outcome (done)
 
 * A job that calls `exit/1` or `throw/1` is caught like an exception: its run is failed and
   its entry re-queued or removed as for any failure. Today the process dies, nothing
@@ -34,7 +33,7 @@ its own (0.1.14) if wanted.
   (`varchar(255)`), including the schema validation message, which was not truncated at
   all, and the generic one, which was cut to 256.
 
-### P1: live progress
+### P1: live progress (done)
 
 * `Bildad.progress(fraction, message)` and `Bildad.stream(chunk)` are callable from inside a
   job (and from processes it starts with `Task`), without passing any identifier around.
@@ -45,7 +44,7 @@ its own (0.1.14) if wanted.
   node-local writer, so a node that is not connected to the job's node can still read it.
 * Telemetry events for runs that are killed, expired or stopped.
 
-### P2: live introspection
+### P2: live introspection (done)
 
 * With run details on, the node that launched a run is recorded.
 * `Bildad.Introspect.info/1` returns a fixed whitelist of process information for a job
@@ -53,7 +52,7 @@ its own (0.1.14) if wanted.
   and turns every failure (no connection, timeout, node on an older Bildad, run finished)
   into a tagged error instead of an exception. Nothing assumes nodes are connected.
 
-### P3: run log retention
+### P3: run log retention (done)
 
 * An opt-in `:logger` handler keeps the last N log lines of each running job in a ring
   buffer held by the job's own process, capped per line and per run.
